@@ -1,0 +1,7 @@
+{
+    "module": "pysindy.differentiation.finite_difference",
+    "class_name": "FiniteDifference",
+    "kwargs": {
+        "order": 2
+    }
+}

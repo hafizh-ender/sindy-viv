@@ -1,0 +1,8 @@
+{
+    "module": "pysindy.feature_library.polynomial_library",
+    "class_name": "PolynomialLibrary",
+    "kwargs": {
+        "degree": 2,
+        "include_bias": true
+    }
+}
