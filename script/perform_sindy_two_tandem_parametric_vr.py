@@ -168,6 +168,9 @@ def main():
         model_pickle_path = os.path.join(results_dir, "model.pkl")
         with open(model_pickle_path, "wb") as f:
             pickle.dump(model, f)
+            
+        # Delete all objects to free up memory
+        del differentiator, overall_feature_library, optimizer, model, coefficients_df
 
 if __name__ == "__main__":
     main()
