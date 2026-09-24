@@ -128,7 +128,7 @@ def prepare_input_single_parametric_vr(
             )
         
         # Prepare input variable data as a column vector
-        U = np.full((X.shape[0], 1), vr)
+        U = np.full((X.shape[0], 1), vr, dtype=X.dtype)
         
         # Append to lists
         t_s.append(time)
@@ -287,7 +287,7 @@ def prepare_input_two_tandem_parametric_vr(
             )
         
         # Prepare input variable data as a column vector
-        U = np.full((X.shape[0], 1), vr)
+        U = np.full((X.shape[0], 1), vr, dtype=X.dtype)
         
         # Append to lists
         t_s.append(time)
@@ -353,7 +353,7 @@ def prepare_input_two_tandem_parametric_vr_lpd(
             )
         
         # Prepare input variable data as a column vector
-        U = np.concat([np.full((X.shape[0], 1), lpd), np.full((X.shape[0], 1), vr)], axis=-1)
+        U = np.concat([np.full((X.shape[0], 1), lpd, dtype=X.dtype), np.full((X.shape[0], 1), vr, dtype=X.dtype)], axis=-1)
         
         # Append to lists
         t_s.append(time)

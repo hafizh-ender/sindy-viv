@@ -50,15 +50,15 @@ def plot_data(
         ax.set_xlim(xlim)
         
         # Turn on grid for all subplots
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.grid(True, which='both', linestyle='-', linewidth=0.5, alpha=0.5)
         
         # Turn off top and right spines for all subplots
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         
         # Make linewidth of bottom and left spines thin
-        ax.spines['bottom'].set_linewidth(1.0)
-        ax.spines['left'].set_linewidth(1.0)
+        ax.spines['bottom'].set_linewidth(0.8)
+        ax.spines['left'].set_linewidth(0.8)
 
     return fig, axs
 
@@ -160,14 +160,14 @@ def plot_compare(
         ax.set_xlim(xlim)
         
         # Turn on grid for all subplots
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        ax.grid(True, which='both', linestyle='-', linewidth=0.5, alpha=0.5)
         
         # Turn off top and right spines for all subplots
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         
         # Make linewidth of bottom and left spines thin
-        ax.spines['bottom'].set_linewidth(1.0)
-        ax.spines['left'].set_linewidth(1.0)
+        ax.spines['bottom'].set_linewidth(0.8)
+        ax.spines['left'].set_linewidth(0.8)
         
     return fig, axs
