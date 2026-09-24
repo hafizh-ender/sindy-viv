@@ -53,7 +53,7 @@ def solve_time_duplicates(time_array, data_array, strategy='uniform'):
         expected_time_step = time_array[1] - time_array[0]
         
         # Create a new time array and data array to hold the results
-        processed_time_array = np.arange(len(time_array), dtype=np.float32) * expected_time_step + time_array[0]
+        processed_time_array = np.arange(len(time_array)) * expected_time_step + time_array[0]
         
         return processed_time_array, data_array
     else:

@@ -26,14 +26,14 @@ def prepare_input_single_case_1(
     if not all(var in full_state_variable_names for var in chosen_state_variables):
         raise ValueError("Some chosen state variables are not present in the full state variable names.")
     
-    # Extract time
-    t = time
-    
     # Extract chosen state variable data
     X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
+    
+    # Extract time
+    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
 
     # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator)
+    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)  # Ensure the derivative has the same dtype as X
 
     return t, X, X_dot, chosen_state_variables
 
@@ -50,14 +50,14 @@ def prepare_input_single_case_2(
     if not all(var in full_state_variable_names for var in chosen_state_variables):
         raise ValueError("Some chosen state variables are not present in the full state variable names.")
 
-    # Extract time
-    t = time
-
     # Extract chosen state variable data
     X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
+
+    # Extract time
+    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
     
     # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator)
+    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)  # Ensure the derivative has the same dtype as X
     
     # Now, we have
     # \dot{h}_0, \ddot{h}_0, \dddot{h}_0, \dot{C}_{L0} in the X_dot
@@ -65,7 +65,7 @@ def prepare_input_single_case_2(
     derivative_C_L0_data = X_dot[:, [chosen_state_variables.index('C_{L0}')]]  # Extract \dot{C}_{L0}
     
     # Perform derivative on \dot{C}_{L0} to get \ddot{C}_{L0}
-    double_derivative_C_L0_data = perform_derivative(time, derivative_C_L0_data, differentiator=differentiator)
+    double_derivative_C_L0_data = perform_derivative(time, derivative_C_L0_data, differentiator=differentiator).astype(derivative_C_L0_data.dtype)
     
     # Combine the chosen state variable data and the derivative data
     X = np.hstack((X, derivative_C_L0_data))
@@ -184,14 +184,14 @@ def prepare_input_two_tandem_case_1(
     if not all(var in full_state_variable_names for var in chosen_state_variables):
         raise ValueError("Some chosen state variables are not present in the full state variable names.")
     
-    # Extract time
-    t = time
-    
     # Extract chosen state variable data
     X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
+    
+    # Extract time
+    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
 
     # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator)
+    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)
 
     return t, X, X_dot, chosen_state_variables
 
@@ -208,14 +208,14 @@ def prepare_input_two_tandem_case_2(
     if not all(var in full_state_variable_names for var in chosen_state_variables):
         raise ValueError("Some chosen state variables are not present in the full state variable names.")
     
-    # Extract time
-    t = time
-    
     # Extract chosen state variable data
     X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
     
+    # Extract time
+    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
+    
     # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator)
+    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)
     
     # Now, we have \dot{h}_0, \ddot{h}_0, \dddot{h}_0, \dot{C}_{L0}, \dot{h}_1, \ddot{h}_1, \dddot{h}_1, \dot{C}_{L1} in the X_dot
     # We want \dot{C}_{L0} and \dot{C}_{L1} to be the inputs as well, so let's extract them, perform derivative individually, and attach them to the X_dot
