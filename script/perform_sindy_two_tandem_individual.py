@@ -60,6 +60,11 @@ def parse_args():
         default=[1.5, 2.0, 3.0, 3.5, 4.0],
         help="List of L/D cases to evaluate SINDy on."
     )
+    argument_parser.add_argument(
+        "--save_pkl",
+        action="store_true",
+        help="Flag to save the SINDy model as a pickle file."
+    )
     
     return argument_parser.parse_args()
 
@@ -140,9 +145,10 @@ def main():
             coefficients_csv_path = os.path.join(results_dir, "model.csv")
             coefficients_df.to_csv(coefficients_csv_path)
             
-            model_pickle_path = os.path.join(results_dir, "model.pkl")
-            with open(model_pickle_path, "wb") as f:
-                pickle.dump(model, f)
+            if args.save_pkl:
+                model_pickle_path = os.path.join(results_dir, "model.pkl")
+                with open(model_pickle_path, "wb") as f:
+                    pickle.dump(model, f)
                 
             # Delete all objects to free up memory
             del differentiator, feature_library, optimizer, model, coefficients_df
