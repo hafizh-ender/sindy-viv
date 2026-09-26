@@ -71,6 +71,8 @@ def plot_compare_prior_check(
     pred_state_variable_names,
     parameter_values_dict,
     
+    error_metrics_dict=None, # Optional dictionary containing error metrics for each state variable
+    
     # Visualization related arguments
     xlim=None,
     
@@ -92,6 +94,7 @@ def plot_compare_prior_check(
         data_true=data_true_to_compare,
         data_pred=data_pred_to_compare,
         state_variable_names=state_variable_names,
+        error_metrics_dict=error_metrics_dict,
         parameter_values_dict=parameter_values_dict,
         xlim=xlim,
         ylim_mean_time_start=ylim_mean_time_start,
@@ -106,6 +109,8 @@ def plot_compare(
     data_pred,
     state_variable_names,
     parameter_values_dict,
+    
+    error_metrics_dict=None, # Optional dictionary containing error metrics for each state variable
     
     # Visualization related arguments
     xlim=None,
@@ -124,7 +129,7 @@ def plot_compare(
     if ylim_mean_time_end is None:
         ylim_mean_time_end = time[-1]
     
-    fig, axs = plt.subplots(len(state_variable_names), 1, figsize=(7.5, 2.5 * len(state_variable_names)), sharex=True, layout='constrained')
+    fig, axs = plt.subplots(len(state_variable_names), 1, figsize=(6, 1 * len(state_variable_names)), sharex=True, layout='constrained')
         
     suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
     fig.suptitle(f"${suptitle_str}$", fontsize=14)
@@ -144,6 +149,17 @@ def plot_compare(
             
         # Turn on Y-label for all subplots
         ax.set_ylabel(f"${state_variable_name}$", fontsize=12)
+        
+        # Add error metrics to top right corner of the subplot if provided
+        if error_metrics_dict is not None and state_variable_name in error_metrics_dict:
+            error_metrics = error_metrics_dict[state_variable_name]
+            
+            error_metrics_str = ', '.join([f"${key}={value:.4f}$" for key, value in error_metrics.items()])
+            
+            ax.text(0.98, 0.95, error_metrics_str, transform=ax.transAxes, fontsize=10,
+                    verticalalignment='top', horizontalalignment='right',
+                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none')
+                    )
         
         # Find mean value of the true data in the specified time range
         if ylim_source == 'true':
