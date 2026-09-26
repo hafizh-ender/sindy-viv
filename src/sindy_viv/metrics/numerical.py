@@ -33,7 +33,7 @@ def _reduce(values, reduction):
 def normalized_root_mean_squared_error(input, target, reduction='mean'):
     """
     Calculate the normalized root mean squared error (NRMSE) between input and target arrays.
-    The NRMSE is computed as the RMSE divided by the standard deviation of the target and expressed as a percentage.
+    The NRMSE is computed as the RMSE divided by the standard deviation of the target.
     
     Parameters:
         input (numpy.ndarray): The input array. Shape: (N, num_variables)
@@ -41,7 +41,7 @@ def normalized_root_mean_squared_error(input, target, reduction='mean'):
         reduction (str): Specifies the reduction to apply to the output. Options are 'mean', 'sum', or 'none'.
         
     Returns:
-        float or numpy.ndarray: The normalized root mean squared error (NRMSE) as a percentage.
+        float or numpy.ndarray: The normalized root mean squared error (NRMSE).
     """
     input, target = _check_input_target_shapes(input, target)
     
@@ -52,14 +52,14 @@ def normalized_root_mean_squared_error(input, target, reduction='mean'):
     denominator = np.std(target, axis=0)
     denominator = np.where(denominator > 0, denominator, np.nan)  # Avoid division by zero; set to NaN if std is zero
     
-    nrmse = rmse / denominator * 100  # Express as a percentage
+    nrmse = rmse / denominator
     
     return _reduce(nrmse, reduction)
 
 def relative_l2_error(input, target, reduction='mean'):
     """
     Calculate the relative L2 error between input and target arrays.
-    The relative L2 error is computed as the L2 norm of the difference between input and target, divided by the L2 norm of the target, and expressed as a percentage.
+    The relative L2 error is computed as the L2 norm of the difference between input and target, divided by the L2 norm of the target.
     
     Parameters:
         input (numpy.ndarray): The input array. Shape: (N, num_variables)
@@ -67,7 +67,7 @@ def relative_l2_error(input, target, reduction='mean'):
         reduction (str): Specifies the reduction to apply to the output. Options are 'mean', 'sum', or 'none'.
 
     Returns:
-        float or numpy.ndarray: The relative L2 error as a percentage.
+        float or numpy.ndarray: The relative L2 error.
     """
     input, target = _check_input_target_shapes(input, target)
     
@@ -78,6 +78,6 @@ def relative_l2_error(input, target, reduction='mean'):
     denominator = np.linalg.norm(target, axis=0)
     denominator = np.where(denominator > 0, denominator, np.nan)  # Avoid division by zero; set to NaN if L2 norm is zero
     
-    rl2e = l2e / denominator * 100  # Express as a percentage
+    rl2e = l2e / denominator
     
     return _reduce(rl2e, reduction)
