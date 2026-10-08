@@ -3,7 +3,7 @@ name = "sindy-viv"
 version = "0.1.0"
 description = "Scripts for a Master's thesis applying SINDy to cylinder VIV data"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10, <3.12"
 authors = [
     { name = "Hafizh Renanto", email = "hafizhrenanto88@gmail.com" }
 ]
