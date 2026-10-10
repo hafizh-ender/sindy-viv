@@ -1,7 +1,3 @@
-import importlib
-
-from sindy_viv.utils import kwargs_to_object, initiate_object
-    
 def perform_derivative(time, data, differentiator):
     """
     Differentiate data using a differentiator object. 

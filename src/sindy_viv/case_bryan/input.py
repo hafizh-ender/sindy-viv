@@ -81,37 +81,56 @@ def load_raw_data_two_tandem_cylinders(re, mstar, vr, lpd, dtype=np.float32, var
 """
 Preprocessed data
 """
-from .preprocessing import convert_to_array, solve_time_duplicates
+from .preprocessing import solve_time_duplicates
+
+def _load_processed_data(file_paths, vr, dtype, strategy):
+    """Assemble values while keeping only one CSV DataFrame in memory.
+
+    Time columns are still checked before reconstructing the uniform grid.
+    The raw-data APIs retain their dictionary-of-DataFrames return format.
+    """
+    if not file_paths:
+        raise ValueError("At least one state variable is required.")
+    if strategy != 'uniform':
+        raise ValueError(f"Unknown strategy '{strategy}'. Supported strategies: 'uniform'.")
+    reference_time = None
+    
+    # Fill the output while retaining only one variable's CSV buffers at a time.
+    for column, (variable, file_path) in enumerate(file_paths.items()):
+        frame = pd.read_csv(file_path, dtype=dtype, usecols=['time', 'error'])
+        
+        # The first variable establishes the row count and shared time reference.
+        if reference_time is None:
+            reference_time = frame['time'].to_numpy(copy=True)
+            data_array = np.empty((len(frame), len(file_paths)), dtype=frame['error'].dtype)
+        elif not np.array_equal(reference_time, frame['time'].to_numpy()):
+            raise ValueError(f"Time array for variable {variable} does not match the reference time array.")
+        data_array[:, column] = frame['error'].to_numpy()
+        
+        # Release the DataFrame before parsing the next CSV.
+        del frame
+        
+    time_array, data_array = solve_time_duplicates(reference_time, data_array, strategy=strategy)
+    
+    # Express recorded timestamps in the model's time coordinate by dividing by VR.
+    time_array /= vr
+    
+    return time_array, data_array
 
 def load_data_single_cylinder(re, mstar, vr, dtype=np.float32, variables=SINGLE_CYLINDER_STATE_VARIABLES, strategy='uniform'):
-    # Load the raw data for a single cylinder and convert it to a NumPy array, resolving any time duplicates.
-    data_dict = load_raw_data_single_cylinder(re, mstar, vr, dtype=dtype, variables=variables)
-    
-    # Convert the dictionary of data to a NumPy array
-    time_array, data_array = convert_to_array(data_dict)
-    
-    # Solve duplicates in the time array by averaging the corresponding data points
-    processed_time_array, processed_data_array = solve_time_duplicates(time_array, data_array, strategy=strategy)
-    
-    # Recall that the time array recorded in Bryan's LBM program is not t*
-    # It is actually Uinfinity * t / D, so we need to divide it by VR to get t*
-    processed_time_array /= vr
-    
-    return processed_time_array, processed_data_array
+    """Load selected states directly into an array, with float64 scaled time."""
+    directory = f"{SINGLE_CYLINDER_DATA_DIR}/Re = {re}/Mstar = {mstar}/VR = {vr}"
+    file_paths = {
+        var: f"{directory}/{SINGLE_CYLINDER_STATE_VARIABLE_FILENAMES[var]}"
+        for var in variables
+    }
+    return _load_processed_data(file_paths, vr, dtype, strategy)
 
 def load_data_two_tandem_cylinders(re, mstar, vr, lpd, dtype=np.float32, variables=TWO_TANDEM_CYLINDERS_STATE_VARIABLES, strategy='uniform'):
-    # Load the raw data for two tandem cylinders and convert it to a NumPy array, resolving any time duplicates.
-    data_dict = load_raw_data_two_tandem_cylinders(re, mstar, vr, lpd, dtype=dtype, variables=variables)
-    
-    # Convert the dictionary of data to a NumPy array
-    time_array, data_array = convert_to_array(data_dict)
-    
-    # Solve duplicates in the time array by averaging the corresponding data points
-    processed_time_array, processed_data_array = solve_time_duplicates(time_array, data_array, strategy=strategy)
-    
-    # Recall that the time array recorded in Bryan's LBM program is not t*
-    # It is actually Uinfinity * t / D, so we need to divide it by VR to get t*
-    processed_time_array /= vr
-    
-    return processed_time_array, processed_data_array
-    
+    """Load selected states directly into an array, with float64 scaled time."""
+    directory = f"{TWO_TANDEM_CYLINDERS_DATA_DIR}/LpD = {lpd}/VR = {vr}"
+    file_paths = {
+        var: f"{directory}/{TWO_TANDEM_CYLINDERS_STATE_VARIABLE_FILENAMES[var]}"
+        for var in variables
+    }
+    return _load_processed_data(file_paths, vr, dtype, strategy)

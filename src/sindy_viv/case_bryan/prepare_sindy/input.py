@@ -2,6 +2,49 @@ import numpy as np
 
 from sindy_viv.differentiation import perform_derivative
 
+def _prepare_input(time, data, names, differentiator, chosen, lift_variables=()):
+    """Allocate final state arrays once; retain float64 time precision.
+
+    The returned time can share storage with a float64 input and should be
+    treated as read-only. State and derivative arrays own their storage.
+    """
+    if not all(var in names for var in chosen):
+        raise ValueError("Some chosen state variables are not present in the full state variable names.")
+    
+    # Preserve small time increments even when the state arrays use float32.
+    t = np.asarray(time, dtype=np.float64)
+    if t.ndim != 1 or data.ndim != 2 or len(t) != len(data):
+        raise ValueError("Time must be 1-D and data 2-D with the same number of rows.")
+    base_columns = len(chosen)
+    
+    # Allocate base and derived state columns together to avoid stacking copies.
+    X = np.empty((len(t), base_columns + len(lift_variables)), dtype=data.dtype)
+    for column, variable in enumerate(chosen):
+        X[:, column] = data[:, names.index(variable)]
+        
+    # Let each differentiator validate and interpret the complete time array.
+    first_derivative = perform_derivative(t, X[:, :base_columns], differentiator)
+    
+    # Case 1 needs no extra lift-derivative state columns.
+    if not lift_variables:
+        return t, X, first_derivative.astype(X.dtype, copy=False), list(chosen)
+    
+    # Assign second derivatives into the state dtype to prevent float64 promotion.
+    X_dot = np.empty_like(X)
+    X_dot[:, :base_columns] = first_derivative
+    del first_derivative
+    for column, variable in enumerate(lift_variables, start=base_columns):
+        X[:, column] = X_dot[:, chosen.index(variable)]
+        
+    # Filter lift channels together and assign into the final output dtype.
+    X_dot[:, base_columns:] = perform_derivative(
+        t, X[:, base_columns:], differentiator
+    )
+    
+    chosen = list(chosen) + [f"\\dot{{{var.split('_')[0]}}}_{var.split('_')[1]}" for var in lift_variables]
+    
+    return t, X, X_dot, chosen
+
 """
 Single cylinder case
 """
@@ -22,20 +65,7 @@ def prepare_input_single_case_1(
     # Choose state variables
     chosen_state_variables = ['h_0', '\\dot{h}_0', 'C_{L0}']
     
-    # Check input validity
-    if not all(var in full_state_variable_names for var in chosen_state_variables):
-        raise ValueError("Some chosen state variables are not present in the full state variable names.")
-    
-    # Extract chosen state variable data
-    X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
-    
-    # Extract time
-    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
-
-    # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)  # Ensure the derivative has the same dtype as X
-
-    return t, X, X_dot, chosen_state_variables
+    return _prepare_input(time, full_state_variable_data, full_state_variable_names, differentiator, chosen_state_variables)
 
 def prepare_input_single_case_2(
     time: np.ndarray, 
@@ -46,33 +76,7 @@ def prepare_input_single_case_2(
     # Choose state variables
     chosen_state_variables = ['h_0', '\\dot{h}_0', '\\ddot{h}_0', 'C_{L0}']
     
-    # Check input validity
-    if not all(var in full_state_variable_names for var in chosen_state_variables):
-        raise ValueError("Some chosen state variables are not present in the full state variable names.")
-
-    # Extract chosen state variable data
-    X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
-
-    # Extract time
-    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
-    
-    # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)  # Ensure the derivative has the same dtype as X
-    
-    # Now, we have
-    # \dot{h}_0, \ddot{h}_0, \dddot{h}_0, \dot{C}_{L0} in the X_dot
-    # We want \dot{C}_{L0} to be the input as well, so let's extract them, perform derivative individually, and attach them to the X_dot
-    derivative_C_L0_data = X_dot[:, [chosen_state_variables.index('C_{L0}')]]  # Extract \dot{C}_{L0}
-    
-    # Perform derivative on \dot{C}_{L0} to get \ddot{C}_{L0}
-    double_derivative_C_L0_data = perform_derivative(time, derivative_C_L0_data, differentiator=differentiator).astype(derivative_C_L0_data.dtype)
-    
-    # Combine the chosen state variable data and the derivative data
-    X = np.hstack((X, derivative_C_L0_data))
-    X_dot = np.hstack((X_dot, double_derivative_C_L0_data))
-    chosen_state_variables.append('\\dot{C}_{L0}')
-
-    return t, X, X_dot, chosen_state_variables
+    return _prepare_input(time, full_state_variable_data, full_state_variable_names, differentiator, chosen_state_variables, ['C_{L0}'])
 
 def prepare_input_single_parametric_vr(
     times: dict[float, np.ndarray],                         # Dictionary of time arrays for each VR
@@ -83,7 +87,10 @@ def prepare_input_single_parametric_vr(
     case: int = 1,                               # Individual case number (1 or 2)
 ):
     # Choose state variables
-    required_state_variables = ['h_0', '\\dot{h}_0', '\\ddot{h}_0', 'C_{L0}']
+    required_state_variables = ['h_0', '\\dot{h}_0', 'C_{L0}']
+    # Only case 2 requires measured acceleration, allowing case 1 to load less data.
+    if case == 2:
+        required_state_variables.append('\\ddot{h}_0')
     
     # Check input validity
     if not all(var in full_state_variable_names for var in required_state_variables):
@@ -111,11 +118,13 @@ def prepare_input_single_parametric_vr(
     X_dot_s = []
     U_s = []
     
-    for vr in input_variables:
+    if not input_variables:
+        raise ValueError("At least one input variable is required.")
+    # Match differentiators by position, including repeated parameter values.
+    for vr, differentiator in zip(input_variables, differentiators):
         # Get time and full state variable data for the current VR
         time = times[vr]
         full_state_variable_data = full_state_variables[vr]
-        differentiator = differentiators[input_variables.index(vr)]        
         
         # Extract chosen state variable data
         if case == 1:
@@ -180,20 +189,7 @@ def prepare_input_two_tandem_case_1(
     # Choose state variables
     chosen_state_variables = ['h_0', '\\dot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', 'C_{L1}']
     
-    # Check input validity
-    if not all(var in full_state_variable_names for var in chosen_state_variables):
-        raise ValueError("Some chosen state variables are not present in the full state variable names.")
-    
-    # Extract chosen state variable data
-    X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
-    
-    # Extract time
-    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
-
-    # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)
-
-    return t, X, X_dot, chosen_state_variables
+    return _prepare_input(time, full_state_variable_data, full_state_variable_names, differentiator, chosen_state_variables)
 
 def prepare_input_two_tandem_case_2(
     time: np.ndarray, 
@@ -204,35 +200,7 @@ def prepare_input_two_tandem_case_2(
     # Choose state variables
     chosen_state_variables = ['h_0', '\\dot{h}_0', '\\ddot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', '\\ddot{h}_1', 'C_{L1}']
     
-    # Check input validity
-    if not all(var in full_state_variable_names for var in chosen_state_variables):
-        raise ValueError("Some chosen state variables are not present in the full state variable names.")
-    
-    # Extract chosen state variable data
-    X = full_state_variable_data[:, [full_state_variable_names.index(var) for var in chosen_state_variables]]
-    
-    # Extract time
-    t = time.astype(X.dtype)  # Ensure the time array has the same dtype as X
-    
-    # Perform derivative on chosen state variable data
-    X_dot = perform_derivative(time, X, differentiator=differentiator).astype(X.dtype)
-    
-    # Now, we have \dot{h}_0, \ddot{h}_0, \dddot{h}_0, \dot{C}_{L0}, \dot{h}_1, \ddot{h}_1, \dddot{h}_1, \dot{C}_{L1} in the X_dot
-    # We want \dot{C}_{L0} and \dot{C}_{L1} to be the inputs as well, so let's extract them, perform derivative individually, and attach them to the X_dot
-    derivative_C_L0_data = X_dot[:, [chosen_state_variables.index('C_{L0}')]]  # Extract \dot{C}_{L0}
-    derivative_C_L1_data = X_dot[:, [chosen_state_variables.index('C_{L1}')]]  # Extract \dot{C}_{L1}
-    
-    # Perform derivative on \dot{C}_{L0} and \dot{C}_{L1} to get \ddot{C}_{L0} and \ddot{C}_{L1}
-    double_derivative_C_L0_data = perform_derivative(time, derivative_C_L0_data, differentiator=differentiator)
-    double_derivative_C_L1_data = perform_derivative(time, derivative_C_L1_data, differentiator=differentiator)
-    
-    # Combine the chosen state variable data and the derivative data
-    X = np.hstack((X, derivative_C_L0_data, derivative_C_L1_data))
-    X_dot = np.hstack((X_dot, double_derivative_C_L0_data, double_derivative_C_L1_data))
-    chosen_state_variables.append('\\dot{C}_{L0}')
-    chosen_state_variables.append('\\dot{C}_{L1}')
-    
-    return t, X, X_dot, chosen_state_variables
+    return _prepare_input(time, full_state_variable_data, full_state_variable_names, differentiator, chosen_state_variables, ['C_{L0}', 'C_{L1}'])
 
 def prepare_input_two_tandem_parametric_vr(
     times: dict[float, np.ndarray],                         # Dictionary of time arrays for each VR on one LpD
@@ -243,7 +211,11 @@ def prepare_input_two_tandem_parametric_vr(
     case: int = 1,                               # Individual case number (1 or 2)
 ):
     # Choose state variables
-    required_state_variables = ['h_0', '\\dot{h}_0', '\\ddot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', '\\ddot{h}_1', 'C_{L1}']
+    required_state_variables = ['h_0', '\\dot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', 'C_{L1}']
+    
+    # Only case 2 requires measured acceleration, allowing case 1 to load less data.
+    if case == 2:
+        required_state_variables.extend(['\\ddot{h}_0', '\\ddot{h}_1'])
     
     # Check input validity
     if not all(var in full_state_variable_names for var in required_state_variables):
@@ -270,11 +242,14 @@ def prepare_input_two_tandem_parametric_vr(
     X_dot_s = []
     U_s = []
     
-    for vr in input_variables:
+    if not input_variables:
+        raise ValueError("At least one input variable is required.")
+    
+    # Match differentiators by position, including repeated parameter values.
+    for vr, differentiator in zip(input_variables, differentiators):
         # Get time and full state variable data for the current VR
         time = times[vr]
         full_state_variable_data = full_state_variables[vr]
-        differentiator = differentiators[input_variables.index(vr)]        
         
         # Extract chosen state variable data
         if case == 1:
@@ -309,7 +284,10 @@ def prepare_input_two_tandem_parametric_vr_lpd(
     case: int = 1,                                            # Individual case number (1 or 2)
 ):
     # Choose state variables
-    required_state_variables = ['h_0', '\\dot{h}_0', '\\ddot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', '\\ddot{h}_1', 'C_{L1}']
+    required_state_variables = ['h_0', '\\dot{h}_0', 'C_{L0}', 'h_1', '\\dot{h}_1', 'C_{L1}']
+    # Only case 2 requires measured acceleration, allowing case 1 to load less data.
+    if case == 2:
+        required_state_variables.extend(['\\ddot{h}_0', '\\ddot{h}_1'])
     
     # Check input validity
     if not all(var in full_state_variable_names for var in required_state_variables):
@@ -336,11 +314,14 @@ def prepare_input_two_tandem_parametric_vr_lpd(
     X_dot_s = []
     U_s = []
     
-    for (lpd, vr) in input_variables:
+    if not input_variables:
+        raise ValueError("At least one input variable is required.")
+    
+    # Match differentiators by position, including repeated parameter pairs.
+    for (lpd, vr), differentiator in zip(input_variables, differentiators):
         # Get time and full state variable data for the current VR and LpD
         time = times[lpd][vr]
         full_state_variable_data = full_state_variables[lpd][vr]
-        differentiator = differentiators[input_variables.index((lpd, vr))]        
         
         # Extract chosen state variable data
         if case == 1:
@@ -352,8 +333,10 @@ def prepare_input_two_tandem_parametric_vr_lpd(
                 time, full_state_variable_data, full_state_variable_names, differentiator
             )
         
-        # Prepare input variable data as a column vector
-        U = np.concat([np.full((X.shape[0], 1), lpd, dtype=X.dtype), np.full((X.shape[0], 1), vr, dtype=X.dtype)], axis=-1)
+        # Fill both parameter columns directly instead of concatenating temporary arrays.
+        U = np.empty((X.shape[0], 2), dtype=X.dtype)
+        U[:, 0] = lpd
+        U[:, 1] = vr
         
         # Append to lists
         t_s.append(time)
@@ -383,3 +366,18 @@ def prepare_input_two_tandem_individual(
         )
     else:
         raise ValueError(f"Invalid case value. Must be 1 or 2. Got {case}.")
+
+def iter_prepared_trajectories(
+    trajectories, full_state_variable_names, differentiator, case=1, *, tandem=False
+):
+    """Yield prepared (t, X, X_dot, names) tuples without collecting raw data.
+
+    ``trajectories`` yields (time, data) pairs, for example from a generator
+    loading one case at a time. Consume results incrementally to bound memory;
+    collecting them into a list retains all prepared arrays. This does not
+    make PySINDy's batch model fitting a streaming operation.
+    """
+    prepare = prepare_input_two_tandem_individual if tandem else prepare_input_single_individual
+    
+    for time, data in trajectories:
+        yield prepare(time, data, full_state_variable_names, differentiator, case=case)

@@ -1,8 +1,4 @@
-import importlib
-
 import pysindy as ps
-
-from sindy_viv.utils import kwargs_to_object, initiate_object
 
 # Data-Information-Agnostic SINDy
 # Basically does three things: prepare feature library, prepare optimizer, and perform SINDy
@@ -56,6 +52,7 @@ def perform_sindy(
         differentiation_method=differentiation_method,
     )
     
+    # Explicit x_dot skips internal differentiation without coupling time and state dtypes.
     model.fit(
         x=state_variable_data, 
         t=time, 
