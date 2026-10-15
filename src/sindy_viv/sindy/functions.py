@@ -69,3 +69,15 @@ def perform_sindy(
     )
     
     return model
+
+def perform_weak_sindy(
+    time,
+    state_variable_data,
+    feature_library,
+    optimizer,
+    feature_names=None,
+    input_variable_data=None,
+    parameter_library=None,
+):
+    """Placeholder for a future WeakSINDy implementation."""
+    raise NotImplementedError("WeakSINDy is not implemented.")
