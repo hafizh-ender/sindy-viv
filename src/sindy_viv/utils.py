@@ -45,8 +45,10 @@ Dynamic import
 """
 def kwargs_to_object(kwargs):
     """
-    Check kwargs dictionary iteratively for object-like entries and initialize them as objects.
+    Instantiate object descriptors in dictionary values and nested lists.
+    
     Example:
+    
     kwargs = {
         'feature_library': {
             'module': 'pysindy.feature_library',
@@ -104,10 +106,9 @@ def kwargs_to_object(kwargs):
                 processed_kwargs[key] = kwargs_to_object(value)
                 
         elif isinstance(value, list):
-            # If the value is a list, check if any of its elements are dictionaries that need to be converted to objects
+            # Wrap each item so root descriptors use the same instantiation logic as dictionary values.
             processed_kwargs[key] = [
-                kwargs_to_object(item) if isinstance(item, dict)
-                else item
+                kwargs_to_object({'item': item})['item']
                 for item in value
             ]
         else:
