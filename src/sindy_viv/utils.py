@@ -11,12 +11,12 @@ def add_dot_text(feature_names):
     feature_names_with_dot = []
     
     for name in feature_names:        
-        if name.startswith('\\dot{'):
+        if name.startswith(r'\dot{'):
             # Replace \dot{ with \ddot{
-            new_name = name.replace('\\dot{', '\\ddot{')
-        elif name.startswith('\\ddot{'):
+            new_name = name.replace(r'\dot{', r'\ddot{')
+        elif name.startswith(r'\ddot{'):
             # Retain \ddot{ with \dddot{
-            new_name = name.replace('\\ddot{', '\\dddot{')
+            new_name = name.replace(r'\ddot{', r'\dddot{')
         else:
             # Get variable without subscript
             var_name = name.split('_')[0]
