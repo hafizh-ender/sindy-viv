@@ -17,6 +17,13 @@ import pysindy as ps
 # 2. Get feature library and optimizer based on the provided settings
 # 3. Perform SINDy using the provided data and the prepared feature library and optimizer
 
+def prepare_parameter_library(library):
+    """Keep parameter tensors intact when combined with state feature libraries."""
+    if isinstance(library, ps.TensoredLibrary):
+        # PySINDy's tensor multiplication flattens children without extending their input-index groups.
+        return ps.GeneralizedLibrary([library])
+    return library
+
 def perform_sindy(
     time, 
     state_variable_data,
