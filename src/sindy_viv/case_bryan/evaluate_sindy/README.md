@@ -136,6 +136,12 @@ Feature and derivative-column names are validated and reordered against the
 saved table. Coefficients and optimizers are never refitted. The configured
 pointwise libraries reconstruct the functions used in the saved CSV.
 
+State and parameter libraries use the general `prepare_library(library_config)`
+function from `sindy_viv.feature_library`, matching computation. It instantiates
+libraries from parsed configuration dictionaries and preserves tensor boundaries
+and input-index groups during outer multiplication without changing feature
+values, names, or CSV alignment.
+
 Set `weak=True` to read `weak_individual`, `weak_parametric_vr`, or
 `weak_parametric_vr_lpd` results. Evaluation uses the returned pointwise
 equations, rather than weak integration windows. For weak case 1, pass

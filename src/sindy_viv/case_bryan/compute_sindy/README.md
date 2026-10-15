@@ -46,10 +46,21 @@ return fitted PySINDy models and save `model.csv`, plus `model.pkl` when request
 Individual runs retain returned models; select fewer trajectories when only one
 model is needed.
 
-Tensor-product parameter libraries are supported, including polynomial/Fourier
-combinations. They are wrapped before composing with state features to avoid
-PySINDy 2.1.0 flattening their children into inconsistent input-index groups.
-The wrapper preserves feature values and ordering in computation and evaluation.
+Tensor-product state and parameter libraries are supported, including
+polynomial/Fourier combinations. The general `prepare_library(library_config)`
+function in `sindy_viv.feature_library` instantiates both state and parameter
+libraries from parsed configuration dictionaries. It wraps tensor libraries
+before composition, preserving their feature values,
+names, and local input-index groups in both computation and evaluation.
+
+The PySINDy 2.1.0 issue depends on multiplication order: a tensor on the left
+is flattened, but the outer library supplies input-index groups for the original
+factors. `ParameterizedLibrary` puts parameters first, so an unwrapped parameter
+tensor fails while a state-only tensor works. A state tensor can fail too when
+placed first in a `GeneralizedLibrary` product. The helper handles either role;
+ordinary libraries are instantiated without a wrapper. The same preparation
+function is also used for individual models; it neither fits libraries nor
+depends on Bryan-specific data.
 
 ## Reciprocal features
 

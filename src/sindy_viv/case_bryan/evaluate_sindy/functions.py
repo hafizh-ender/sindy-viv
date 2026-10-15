@@ -11,13 +11,12 @@ from sindy_viv.case_bryan.constants import (
 )
 from sindy_viv.case_bryan.input import load_data_single_cylinder, load_data_two_tandem_cylinders
 from sindy_viv.case_bryan.prepare_sindy.input import prepare_input_single_individual, prepare_input_two_tandem_individual
-from sindy_viv.sindy.functions import prepare_parameter_library
+from sindy_viv.feature_library import prepare_library
 from sindy_viv.utils import add_dot_text, initiate_object, load_config
 from ._evaluation import (
     load_coefficients, model_differentiator_name, predict_derivative,
     prepare_integral_states, report_evaluation, select_time_region, simulate, validate_selection,
 )
-
 
 def evaluate_sindy(
     dynamics_case,
@@ -48,7 +47,8 @@ def evaluate_sindy(
     mstar=None,
     dtype=np.float64,
 ):
-    """Evaluate saved models by derivative reconstruction or initial-value simulation.
+    """
+    Evaluate saved models by derivative reconstruction or initial-value simulation.
 
     Select ``evaluation_type='derivative'`` or ``'integral'``; cylinder and
     parameterization options match compute_sindy. Returns {vr: evaluation}
@@ -56,10 +56,11 @@ def evaluate_sindy(
     Bounds and plot limits use t*; differentiation and integration use tau.
     Metrics and figures retain their existing directory and filename layout.
     All fits use state_feature_library_case. Parameterization is explicit;
-    VR and joint L/D–VR models require input_feature_library_case.
+    VR and joint L/D-VR models require input_feature_library_case.
     """
     if evaluation_type not in ("derivative", "integral"):
         raise ValueError("evaluation_type must be 'derivative' or 'integral'.")
+    
     if cylinder_type == "single":
         case_name = SINGLE_CYLINDER_CASE_NAME
         re = SINGLE_CYLINDER_RE if re is None else re
@@ -77,18 +78,24 @@ def evaluate_sindy(
         variable_names = ['h_0', r'\dot{h}_0', 'C_{L0}', 'h_1', r'\dot{h}_1', 'C_{L1}']
     else:
         raise ValueError("cylinder_type must be 'single' or 'two_tandem'.")
+    
     vr_list = validate_selection(vr_list, "vr_list")
     if parameterization not in ("individual", "vr", "vr_lpd"):
         raise ValueError("parameterization must be 'individual', 'vr', or 'vr_lpd'.")
+    
     if parameterization == "vr_lpd" and cylinder_type != "two_tandem":
         raise ValueError("parameterization='vr_lpd' requires cylinder_type='two_tandem'.")
+    
     # Require library configurations to agree with the explicitly selected model type.
     if parameterization == "individual" and input_feature_library_case is not None:
         raise ValueError("Individual evaluation cannot use input_feature_library_case; omit it or select a parametric model.")
+    
     if parameterization != "individual" and input_feature_library_case is None:
         raise ValueError("Parametric evaluation requires input_feature_library_case.")
+    
     if state_feature_library_case is None:
         raise ValueError("All evaluation requires state_feature_library_case.")
+    
     if parameterization == "individual":
         fit_mode = "individual"
     elif parameterization == "vr" or parameterization == "vr_lpd":
@@ -97,23 +104,29 @@ def evaluate_sindy(
         else:
             fit_mode = "parametric_vr_lpd"
     model_differentiator = model_differentiator_name(dynamics_case, differentiator_case, weak)
+    
     if weak:
         fit_mode = "weak_" + fit_mode
+        
     reference_case = evaluation_differentiator_case if evaluation_differentiator_case is not None else differentiator_case
+    
     # Integral case 1 constructs X directly; all other paths need reference differentiation.
     if evaluation_type == "derivative":
         if reference_case is None:
             raise ValueError("Derivative evaluation requires evaluation_differentiator_case or differentiator_case.")
+        
         differentiator_config = load_config(reference_case)
         reference_name = Path(reference_case).stem
     elif dynamics_case == 2:
         if reference_case is None:
             raise ValueError("Case 2 integral evaluation requires a reference differentiator.")
+        
         differentiator_config = load_config(reference_case)
         reference_name = Path(reference_case).stem
     else:
         differentiator_config = None
         reference_name = "no_differentiator"
+        
     state_library_config = load_config(state_feature_library_case)
     if parameterization != "individual":
         input_library_config = load_config(input_feature_library_case)
@@ -125,6 +138,7 @@ def evaluate_sindy(
                 time, data = load_data_single_cylinder(re, mstar, vr, dtype=dtype, variables=variable_names)
             else:
                 time, data = load_data_two_tandem_cylinders(re, mstar, vr, lpd, dtype=dtype, variables=variable_names)
+                
             region = select_time_region(time, vr, tstar0, tstarf)
             differentiator = initiate_object(**differentiator_config) if differentiator_config is not None else None
             if evaluation_type == "derivative":
@@ -152,18 +166,21 @@ def evaluate_sindy(
 
             if parameterization == "individual":
                 parameter_names, parameters = [], ()
-                library = initiate_object(**state_library_config)
+                library = prepare_library(state_library_config)
             else:
                 if parameterization == "vr":
                     parameter_names, parameters = ['V_R'], (vr,)
                 else:
                     # Joint parameters remain ordered L/D then VR, matching preparation and training.
                     parameter_names, parameters = ['L/D', 'V_R'], (lpd, vr)
+                    
                 library = ps.ParameterizedLibrary(
-                    feature_library=initiate_object(**state_library_config),
-                    parameter_library=prepare_parameter_library(initiate_object(**input_library_config)),
+                    feature_library=prepare_library(state_library_config),
+                    parameter_library=prepare_library(input_library_config),
                     num_features=len(state_names), num_parameters=len(parameter_names),
                 )
+                
+            # Construct the model directory path based on the provided parameters and settings.                
             model_dir = Path(results_root) / case_name / f"dynamics_case_{dynamics_case}" / model_differentiator / fit_mode
             if parameterization == "individual":
                 model_dir /= Path(state_feature_library_case).stem
@@ -178,7 +195,9 @@ def evaluate_sindy(
                 model_dir = model_dir / f"LpD = {lpd}" / f"VR = {vr}"
             elif parameterization == "vr":
                 model_dir /= f"LpD = {lpd}"
+                
             coefficients = load_coefficients(model_dir, library, X, state_names, parameters, parameter_names)
+            
             if evaluation_type == "derivative":
                 prediction = predict_derivative(library, coefficients, X, parameters, block_size=block_size)
                 solver = None
@@ -187,6 +206,7 @@ def evaluate_sindy(
                     library, coefficients, t, reference, parameters,
                     method=method, rtol=rtol, atol=atol, solver_options=solver_options,
                 )
+                
             report_dir = model_dir / "evaluation"
             parameter_values = {'Re': re, 'm^*': mstar, 'V_R': vr}
             if cylinder_type == "single":
@@ -195,11 +215,14 @@ def evaluate_sindy(
                 key = (lpd, vr)
                 parameter_values['L/D'] = lpd
                 report_dir /= f"LpD = {lpd}"
+                
             report_dir /= f"VR = {vr}"
+            
             evaluations[key] = report_evaluation(
                 evaluation_type, model_dir, report_dir, t, vr, reference, prediction,
                 variable_names_to_report, parameter_values, reference_name,
                 save_plot=save_plot, xlim=xlim, ylim_mean_time=ylim_mean_time,
                 block_size=block_size, solver=solver,
             )
+            
     return evaluations
