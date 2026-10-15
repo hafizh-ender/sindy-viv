@@ -1,13 +1,12 @@
 import numpy as np
 
-def convert_to_array(data_dict, dtype=None):
+def convert_to_array(data_dict, dtype=np.float64):
     """
     Convert a dictionary of data to a NumPy array.
     
     Parameters:
         data_dict (dict): Dictionary containing the data with variable names as keys
-        dtype (numpy.dtype or None): Output data dtype. None preserves the
-            common dtype of the input value columns. Time is float64.
+        dtype (numpy.dtype or None): Output data dtype.
     
     Returns:
         tuple: A tuple containing the time array and the data array. Shape: (N,) and (N, num_variables) respectively.
@@ -28,11 +27,11 @@ def convert_to_array(data_dict, dtype=None):
     num_time_points = len(data_dict[variable_names[0]])
     num_variables = len(variable_names)
     
-    # Infer a common value dtype instead of silently downcasting float64 inputs.
+    # Infer a common value dtype if dtype is None, otherwise use the provided dtype.
     if dtype is None:
         dtype = np.result_type(*(data_dict[var]['error'].dtype for var in variable_names))
         
-    # Every column is filled below, so zero-initializing the output is unnecessary.
+    # Initialize the data array with the appropriate shape and dtype.
     data_array = np.empty((num_time_points, num_variables), dtype=dtype)
     
     # Fill the array with the data
@@ -40,13 +39,13 @@ def convert_to_array(data_dict, dtype=None):
         data_array[:, i] = data_dict[var]['error']
     
     # Keep timestamp precision independent of the chosen state dtype.
-    time_array = np.array(reference_time, dtype=np.float64, copy=True)
+    time_array = np.array(reference_time, dtype=reference_time.dtype, copy=True)
     
     return time_array, data_array
 
 def solve_time_duplicates(time_array, data_array, strategy='uniform'):
     """
-    Reconstruct a uniform float64 time axis without dropping or averaging rows.
+    Reconstruct a uniform time axis without dropping or averaging rows.
     
     Parameters:
         time_array (np.ndarray): Array of time points
@@ -72,8 +71,8 @@ def solve_time_duplicates(time_array, data_array, strategy='uniform'):
         if not np.isfinite(expected_time_step) or expected_time_step <= 0:
             raise ValueError("The initial time step must be finite and positive.")
         
-        # Build the grid in float64 and update it in place to avoid temporary arrays.
-        processed_time_array = np.arange(len(time_array), dtype=np.float64)
+        # Update it in place to avoid temporary arrays.
+        processed_time_array = np.arange(len(time_array), dtype=time_array.dtype)
         processed_time_array *= expected_time_step
         processed_time_array += time_array[0]
         

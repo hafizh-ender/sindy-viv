@@ -19,10 +19,8 @@ class SavitzkyGolayDerivative(BaseDifferentiation):
         mode (str): Edge handling, passed to scipy. Default 'interp'.
         cval (float): Fill value when mode='constant'.
         rtol (float): Relative tolerance for the uniform-spacing check.
-        dtype (numpy.dtype or None): Computation dtype. None preserves float32
-            and float64 inputs; other inputs are converted to float64.
+        dtype (numpy.dtype or None): Computation dtype, default float64.
     """
-
     def __init__(
         self,
         window_length,
@@ -31,7 +29,7 @@ class SavitzkyGolayDerivative(BaseDifferentiation):
         mode="interp",
         cval=0.0,
         rtol=1e-6,
-        dtype=None,
+        dtype=np.float64,
     ):
         self.window_length = window_length
         self.polyorder = polyorder
@@ -71,7 +69,7 @@ class SavitzkyGolayDerivative(BaseDifferentiation):
         return float(dt)
 
     def _differentiate(self, x, t):
-        # SciPy supports float32 directly, avoiding a full float64 copy.
+        # Ensure input is a NumPy array with the specified dtype for computation.
         x = np.asarray(x, dtype=self.dtype)
         
         # Convert unsupported input dtypes to SciPy's float64 working format.
