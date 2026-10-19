@@ -1,11 +1,14 @@
 """Command-line entry point for the weak Bryan-case computation."""
 
+from typing import NoReturn
+
 import argparse
 
 from sindy_viv.case_bryan.compute_sindy.functions import compute_weak_sindy
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse and validate this command line; --help describes available settings."""
     argument_parser = argparse.ArgumentParser(description="Perform WeakSINDy on Bryan's LBM data of a single oscillating cylinder for all VR cases, parametrically.")
     argument_parser.add_argument(
         "--dynamics_case",
@@ -17,7 +20,7 @@ def parse_args():
         "--differentiator_case",
         type=str,
         required=False,
-        help="Differentiator config needed only to construct case-2 lift-rate states."
+        help="Reserved differentiator config for lift-rate states in cases 2 and 4."
     )
     argument_parser.add_argument(
         "--state_feature_library_case",
@@ -50,7 +53,7 @@ def parse_args():
         help="Flag to save the SINDy model as a pickle file."
     )
 
-    # Integration bounds use CSV fluid time t*; computation converts them to tau.
+    # Reserved integration bounds use CSV fluid time t*; WeakSINDy fitting is not implemented.
     argument_parser.add_argument("--tweak0", type=float, default=None, help="Inclusive integration start in t*; defaults to the trajectory start.")
     argument_parser.add_argument("--tweakf", type=float, default=None, help="Inclusive integration end in t*; defaults to the trajectory end.")
     argument_parser.add_argument("--K", type=int, default=100, help="Number of weak integration windows.")
@@ -60,7 +63,8 @@ def parse_args():
     return argument_parser.parse_args()
 
 
-def main():
+def main() -> NoReturn:
+    """Delegate this explicit cylinder/parameterization command to the package API."""
     return compute_weak_sindy(
         cylinder_type="single", parameterization="vr", **vars(parse_args()),
     )

@@ -1,15 +1,19 @@
 """Command-line entry point for the importable Bryan-case computation."""
 
+import pysindy as ps
+
 import argparse
 
 from sindy_viv.case_bryan.compute_sindy.functions import compute_sindy
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse and validate this command line; --help describes available settings."""
     argument_parser = argparse.ArgumentParser(description="Perform SINDy on Bryan's LBM data of a single oscillating cylinder for all VR cases, individually.")
     argument_parser.add_argument(
         "--dynamics_case",
         type=int,
+        choices=[1, 2, 3, 4],
         required=True,
         help="Dynamics case to perform SINDy on."
     )
@@ -44,10 +48,12 @@ def parse_args():
         help="Flag to save the SINDy model as a pickle file."
     )
 
+    argument_parser.add_argument("--fit_window_case", default=None, help="JSON fitting windows keyed by VR (single) or LpD/VR (tandem); defaults to the matching overall.json.")
     return argument_parser.parse_args()
 
 
-def main():
+def main() -> dict[float | tuple[float, float], ps.SINDy]:
+    """Delegate this explicit cylinder/parameterization command to the package API."""
     return compute_sindy(
         cylinder_type="single", parameterization="individual", **vars(parse_args()),
     )
