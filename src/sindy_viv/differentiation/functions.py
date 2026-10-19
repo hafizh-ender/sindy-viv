@@ -1,15 +1,22 @@
-def perform_derivative(time, data, differentiator):
-    """
-    Differentiate data using a differentiator object. 
-    The differentiator object should implement the `__call__` method that takes `data` and `time` as arguments.
+from __future__ import annotations
+
+from numpy.typing import ArrayLike
+from sindy_viv._typing import Differentiator
+import numpy as np
+
+def perform_derivative(time: ArrayLike, data: ArrayLike, differentiator: Differentiator | None) -> np.ndarray:
+    """Call differentiator(data, time), preserving its returned shape and precision.
+
+    Time is an array in the desired coordinate or a scalar sample step. Data is
+    N-by-channel. Bryan preparation supplies float64 tau and requires a first
+    derivative callable; this generic function applies no time/state rescaling.
 
     Parameters:
-        time (numpy.ndarray or float): Time points, or a scalar time step.
-        data (numpy.ndarray): Data to differentiate. Shape: (N, num_variables)
-        differentiator (object): An instance of a differentiator class.
+        time (array-like): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        data (array-like): Measured samples with one column per supplied variable name.
 
-    Returns:
-        numpy.ndarray: The differentiated data, same shape as `data`.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
     """
+
     # Apply the differentiator to the data
     return differentiator(data, time)
