@@ -1,24 +1,118 @@
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from numpy.typing import ArrayLike
+from typing import Literal
 import numpy as np
 
 import matplotlib.pyplot as plt
 
-def _time_windows(time, xlim, start, end, crop_to_xlim):
-    """Select statistics once and crop lines while retaining boundary segments."""
+PLOT_COLORS = ('black', 'red', 'blue')
+LINE_WIDTH = 0.6
+
+def create_subplots(
+    rows: int,
+    columns: int = 1,
+    *,
+    sharex: bool = True,
+    squeeze: bool = True,
+    figsize: tuple[float, float] | None = None,
+) -> tuple[Figure, Axes | np.ndarray]:
+    """Return a figure and paper-style axes, with six inches per column by default.
+
+    rows/columns set the layout; figsize overrides its size. squeeze follows
+    Matplotlib, so axes may be one Axes or an array. Top/right spines are hidden.
+    The caller owns the returned figure and must close it after use.
+
+    Parameters:
+        rows (int): Number of subplot rows.
+        columns (int): Number of subplot columns. Default: 1
+        sharex (bool): Whether subplot axes share the horizontal scale. Default: True
+        squeeze (bool): Whether singleton subplot dimensions are removed from the returned axes. Default: True
+        figsize (tuple[float, float] or None): Figure width and height in inches; None uses the standard per-panel size. Default: None
+    """
+    figure, axes = plt.subplots(
+        rows, columns, figsize=(6 * columns, rows) if figsize is None else figsize, sharex=sharex,
+        squeeze=squeeze, layout='constrained',
+    )
+    for ax in np.asarray(axes, dtype=object).flat:
+        ax.set_prop_cycle(color=PLOT_COLORS)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_linewidth(0.8)
+        ax.spines['left'].set_linewidth(0.8)
+        ax.tick_params(width=0.6, labelsize=10)
+        ax.xaxis.label.set_size(12)
+        ax.yaxis.label.set_size(12)
+        ax.grid(True, which='both', linestyle='-', linewidth=0.4, alpha=0.35)
+    return figure, axes
+
+
+def _validate_plot_data(time: ArrayLike, data: ArrayLike, names: Sequence[str]) -> np.ndarray:
+    """Validate real finite N-by-channel data before any figure is allocated.
+
+    Parameters:
+        time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
+        data (array-like): Measured samples with one column per supplied variable name.
+        names (Sequence[str]): Ordered variable names identifying array columns.
+    """
+    values = np.asarray(data)
+    if values.ndim != 2 or values.shape != (len(time), len(names)) or not names:
+        raise ValueError("Plot data must have one aligned column per nonempty variable name.")
+    if len(set(names)) != len(names) or values.dtype.kind not in "biuf":
+        raise ValueError("Plot names must be unique and values must be real numeric data.")
+
+    # Bound finite-check scratch space even for very long plotted trajectories.
+    for start in range(0, len(values), 10_000):
+        if not np.all(np.isfinite(values[start:start + 10_000])):
+            raise ValueError("Plot data must contain finite values.")
+    return values
+
+
+def _time_windows(
+    time: ArrayLike,
+    xlim: Sequence[float] | None,
+    start: float,
+    end: float | None,
+    crop_to_xlim: bool,
+) -> tuple[np.ndarray, Sequence[float], slice | np.ndarray, slice]:
+    """Return validated time/limits and statistics/visible row selectors.
+
+    Time is recorded t*. Sorted axes use slices; unsorted axes retain input line
+    order. Cropping is opt-in and retains neighboring boundary segments.
+    Empty statistics intervals or invalid bounds raise ValueError.
+
+    Parameters:
+        time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
+
+        xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range.
+        start (float): First recorded t* included in the statistics window.
+        end (float or None): Last recorded t* included in the statistics window; None uses the available end.
+        crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval.
+    """
     time = np.asarray(time)
-    
-    if time.ndim != 1 or not len(time):
-        raise ValueError("Time must be a nonempty 1-D array.")
-    
+
+    if time.ndim != 1 or not len(time) or not np.all(np.isfinite(time)):
+        raise ValueError("Time must be a finite nonempty 1-D array.")
+
     if xlim is None:
         xlim = (time[0], time[-1])
-        
+
+    if len(xlim) != 2 or not np.all(np.isfinite(xlim)):
+        raise ValueError("xlim must contain two finite bounds.")
     if end is None:
         end = time[-1]
-        
+    if not np.isfinite(start) or not np.isfinite(end) or start > end:
+        raise ValueError("The statistics interval must have finite ordered bounds.")
+
     # Sorted timestamps permit slice views instead of a new mask for every channel.
     if np.all(time[1:] >= time[:-1]):
         stats = slice(np.searchsorted(time, start, side='left'), np.searchsorted(time, end, side='right'))
         visible = slice(None)
+
         # Cropping is opt-in so default plots retain all samples for later panning.
         if crop_to_xlim:
             low, high = sorted(xlim)
@@ -27,122 +121,174 @@ def _time_windows(time, xlim, start, end, crop_to_xlim):
                 min(len(time), np.searchsorted(time, high, side='right') + 1),
             )
     else:
+
         # Preserve line ordering for callers supplying unsorted timestamps.
         stats = (time >= start) & (time <= end)
         visible = slice(None)
-        
+
     # Reject empty statistics windows before allocating a figure.
     if not time[stats].size:
         raise ValueError("The y-axis statistics interval contains no samples.")
-    
+
     return time, xlim, stats, visible
 
 
-def _matching_columns(data, source_names, chosen_names):
+def _matching_columns(data: ArrayLike, source_names: Sequence[str], chosen_names: Sequence[str]) -> np.ndarray:
+
     # Reuse the original array when channel names already match in order.
+    """Align selected channel names, returning a view for contiguous columns.
+
+    Noncontiguous/reordered selections require a copy. Callers validate unique
+    names and ensure every chosen name exists before invoking this helper.
+
+    Parameters:
+        data (array-like): Measured samples with one column per supplied variable name.
+        source_names (Sequence[str]): Names identifying the existing data columns.
+        chosen_names (Sequence[str]): Names selecting and ordering the returned columns.
+    """
     if list(source_names) == list(chosen_names):
         return data
     indices = [source_names.index(name) for name in chosen_names]
-    
+
     # A contiguous selection can also be represented by a view.
     if indices == list(range(indices[0], indices[0] + len(indices))):
         return data[:, indices[0]:indices[0] + len(indices)]
-    
+
     return data[:, indices]
 
 def plot_data(
     # Data related arguments
-    time, # t^* = U_inf t / D, NOT tau = f_N t. Shape: (N,)
-    data, # Shape: (N, num_state_variables)
-    state_variable_names,
-    parameter_values_dict,
-    
+    time: ArrayLike, # t^* = U_inf t / D, NOT tau = f_N t. Shape: (N,)
+    data: ArrayLike, # Shape: (N, num_state_variables)
+    state_variable_names: Sequence[str],
+    parameter_values_dict: Mapping[str, float],
+
     # Visualization related arguments
-    xlim=None,
-    
-    ylim_mean_time_start=0,
-    ylim_mean_time_end=None,
-    
-    crop_to_xlim=False,
-):
-    """Plot states; opt into cropping when later panning is not required."""
+    xlim: Sequence[float] | None = None,
+
+    ylim_mean_time_start: float = 0,
+    ylim_mean_time_end: float | None = None,
+
+    crop_to_xlim: bool = False,
+) -> tuple[Figure, Axes | np.ndarray]:
+    """Return a figure and axes for finite N-by-channel signals on recorded t*.
+
+    Names describe columns in order; parameter_values_dict supplies title labels.
+    xlim controls display, while ylim_mean_time_start/end select independent
+    y-limit statistics. crop_to_xlim limits stored line samples when True;
+    default False permits later panning. Inputs are validated before allocation,
+    and rendering failures close partial figures. The caller closes successful figures.
+
+    Parameters:
+        time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
+        data (array-like): Measured samples with one column per supplied variable name.
+        state_variable_names (Sequence[str]): Ordered names of the state columns to display.
+        parameter_values_dict (Mapping[str, float]): Parameter labels and values displayed with the figure.
+        xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range. Default: None
+        ylim_mean_time_start (float): First recorded t* included in y-limit statistics. Default: 0
+        ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
+        crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+    """
     time, xlim, stats, visible = _time_windows(time, xlim, ylim_mean_time_start, ylim_mean_time_end, crop_to_xlim)
-    
-    fig, axs = plt.subplots(len(state_variable_names), 1, figsize=(6, 1 * len(state_variable_names)), sharex=True, layout='constrained')
-    
-    suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
-    
-    # Avoid an empty math expression when no parameter values were supplied.
-    if suptitle_str:
-        fig.suptitle(f"${suptitle_str}$", fontsize=14)
-    
-    for i, state_variable_name in enumerate(state_variable_names):
-        ax = axs[i] if len(state_variable_names) > 1 else axs
-        
-        # Plot the data for the current state variable
-        ax.plot(time[visible], data[visible, i], label=f"${state_variable_name}$", color='tab:blue', linewidth=1.0)
-            
-        # Turn on Y-label for all subplots
-        ax.set_ylabel(f"${state_variable_name}$", fontsize=12)
-        
-        # Turn on X-label for the last subplot only
-        if i == len(state_variable_names) - 1:
-            ax.set_xlabel("$t^*$", fontsize=12)
-        
-        # Find mean value of the data in the specified time range
-        values = data[stats, i]
-        mean_value = values.mean()
-        relative_max_value = np.max(np.abs(values - mean_value))
-        
-        # Set the y-axis limits based on the mean value and relative maximum value
-        ax.set_ylim(mean_value - 1.1 * relative_max_value, mean_value + 1.1 * relative_max_value)
-        
-        # Set the x-axis limits
-        ax.set_xlim(xlim)
-        
-        # Turn on grid for all subplots
-        ax.grid(True, which='both', linestyle='-', linewidth=0.5, alpha=0.5)
-        
-        # Turn off top and right spines for all subplots
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        
-        # Make linewidth of bottom and left spines thin
-        ax.spines['bottom'].set_linewidth(0.8)
-        ax.spines['left'].set_linewidth(0.8)
+    data = _validate_plot_data(time, data, state_variable_names)
+    fig, axs = create_subplots(len(state_variable_names))
+    try:
+
+        suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
+
+        # Avoid an empty math expression when no parameter values were supplied.
+        if suptitle_str:
+            fig.suptitle(f"${suptitle_str}$", fontsize=14)
+
+        for i, state_variable_name in enumerate(state_variable_names):
+            ax = axs[i] if len(state_variable_names) > 1 else axs
+
+            # Plot the data for the current state variable
+            ax.plot(time[visible], data[visible, i], label=f"${state_variable_name}$", color=PLOT_COLORS[0], linewidth=LINE_WIDTH)
+
+            # Turn on Y-label for all subplots
+            ax.set_ylabel(f"${state_variable_name}$", fontsize=12)
+
+            # Turn on X-label for the last subplot only
+            if i == len(state_variable_names) - 1:
+                ax.set_xlabel("$t^*$", fontsize=12)
+
+            # Find mean value of the data in the specified time range
+            values = data[stats, i]
+            mean_value = values.mean()
+            relative_max_value = max(abs(values.min() - mean_value), abs(values.max() - mean_value))
+
+            # Set the y-axis limits based on the mean value and relative maximum value
+            ax.set_ylim(mean_value - 1.1 * relative_max_value, mean_value + 1.1 * relative_max_value)
+
+            # Set the x-axis limits
+            ax.set_xlim(xlim)
+
+
+    except BaseException:
+
+        # Close partially drawn figures when Matplotlib raises before returning to the caller.
+        plt.close(fig)
+        raise
 
     return fig, axs
 
 def plot_compare_prior_check(
     # Data related arguments
-    time, # t^* = U_inf t / D, NOT tau = f_N t
-    data_true,
-    data_pred,
-    true_state_variable_names,
-    pred_state_variable_names,
-    parameter_values_dict,
-    
-    error_metrics_dict=None, # Optional dictionary containing error metrics for each state variable
-    
+    time: ArrayLike, # t^* = U_inf t / D, NOT tau = f_N t
+    data_true: np.ndarray,
+    data_pred: np.ndarray,
+    true_state_variable_names: Sequence[str],
+    pred_state_variable_names: Sequence[str],
+    parameter_values_dict: Mapping[str, float],
+
+    error_metrics_dict: Mapping[str, Mapping[str, float]] | None = None, # Optional dictionary containing error metrics for each state variable
+
     # Visualization related arguments
-    xlim=None,
-    
-    ylim_mean_time_start=0,
-    ylim_mean_time_end=None,
-    
-    ylim_source='true', # 'true' or 'pred'
-    
-    crop_to_xlim=False,
-):
+    xlim: Sequence[float] | None = None,
+
+    ylim_mean_time_start: float = 0,
+    ylim_mean_time_end: float | None = None,
+
+    ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference', # 'reference', 'prediction', or 'both'; legacy 'true'/'pred' also work.
+
+    crop_to_xlim: bool = False,
+) -> tuple[Figure, Axes | np.ndarray]:
+    """Align shared reference/prediction channels by name and return comparison axes.
+
+    Both arrays share the same recorded t* axis; channel orders may differ.
+    Unknown/nonshared channels are omitted, and no shared channels raises
+    ValueError. See plot_compare for limits, statistics, metric labels and
+    figure ownership. Noncontiguous channel alignment may copy input columns.
+
+    Parameters:
+        time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
+        data_true (numpy.ndarray): Reference samples, with columns ordered by their reference names.
+        data_pred (numpy.ndarray): Predicted samples, with columns ordered by their prediction names.
+        true_state_variable_names (Sequence[str]): Names identifying reference columns.
+        pred_state_variable_names (Sequence[str]): Names identifying prediction columns.
+        parameter_values_dict (Mapping[str, float]): Parameter labels and values displayed with the figure.
+        error_metrics_dict (Mapping[str, Mapping[str, float]] or None): Per-variable metrics included in comparison annotations. Default: None
+        xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range. Default: None
+        ylim_mean_time_start (float): First recorded t* included in y-limit statistics. Default: 0
+        ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
+        ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Data used to calculate y limits: reference, prediction, or both; true and pred are aliases. Default: 'reference'
+        crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+    """
+    time = np.asarray(time)
+    if time.ndim != 1:
+        raise ValueError("Time must be a 1-D array.")
+    data_true = _validate_plot_data(time, data_true, true_state_variable_names)
+    data_pred = _validate_plot_data(time, data_pred, pred_state_variable_names)
     state_variable_names = [var for var in true_state_variable_names if var in pred_state_variable_names]
-    
+
     if len(state_variable_names) == 0:
         raise ValueError("No common state variable names found between true and predicted data.")
-    
+
     # Align both arrays to the true-variable order before comparing channel values.
     data_true_to_compare = _matching_columns(data_true, true_state_variable_names, state_variable_names)
     data_pred_to_compare = _matching_columns(data_pred, pred_state_variable_names, state_variable_names)
-    
+
     return plot_compare(
         time=time,
         data_true=data_true_to_compare,
@@ -159,84 +305,108 @@ def plot_compare_prior_check(
 
 def plot_compare(
     # Data related arguments
-    time, # t^* = U_inf t / D, NOT tau = f_N t
-    data_true,
-    data_pred,
-    state_variable_names,
-    parameter_values_dict,
-    
-    error_metrics_dict=None, # Optional dictionary containing error metrics for each state variable
-    
-    # Visualization related arguments
-    xlim=None,
-    
-    ylim_mean_time_start=0,
-    ylim_mean_time_end=None,
-    
-    ylim_source='true', # 'true' or 'pred'
-    crop_to_xlim=False,
-):
-    """Compare states, optionally cropping lines to the initial x-axis limits."""
-    if ylim_source not in ['true', 'pred']:
-        raise ValueError("ylim_source must be either 'true' or 'pred'")
-    
-    time, xlim, stats, visible = _time_windows(time, xlim, ylim_mean_time_start, ylim_mean_time_end, crop_to_xlim)
-    ylim_data = data_true if ylim_source == 'true' else data_pred
-    
-    fig, axs = plt.subplots(len(state_variable_names), 1, figsize=(6, 1 * len(state_variable_names)), sharex=True, layout='constrained')
-        
-    suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
-    # Avoid an empty math expression when no parameter values were supplied.
-    if suptitle_str:
-        fig.suptitle(f"${suptitle_str}$", fontsize=14)
-    
-    for i, state_variable_name in enumerate(state_variable_names):
-        ax = axs[i] if len(state_variable_names) > 1 else axs
-        
-        # Plot the true data for the current state variable
-        ax.plot(time[visible], data_true[visible, i], label=f"True ${state_variable_name}$", color='tab:blue', linewidth=1.0)
-        
-        # Plot the predicted data for the current state variable
-        ax.plot(time[visible], data_pred[visible, i], label=f"Predicted ${state_variable_name}$", color='tab:red', linestyle='--', linewidth=1.0)
-        
-        # Turn on X-label for the last subplot only
-        if i == len(state_variable_names) - 1:
-            ax.set_xlabel("$t^*$", fontsize=12)
-            
-        # Turn on Y-label for all subplots
-        ax.set_ylabel(f"${state_variable_name}$", fontsize=12)
-        
-        # Add error metrics to top right corner of the subplot if provided
-        if error_metrics_dict is not None and state_variable_name in error_metrics_dict:
-            error_metrics = error_metrics_dict[state_variable_name]
-            
-            error_metrics_str = ', '.join([f"${key}={value:.4f}$" for key, value in error_metrics.items()])
-            
-            ax.text(0.98, 0.95, error_metrics_str, transform=ax.transAxes, fontsize=10,
-                    verticalalignment='top', horizontalalignment='right',
-                    bbox=dict(facecolor='white', alpha=0.5, edgecolor='none')
-                    )
-        
-        # Find mean value of the true data in the specified time range
-        values = ylim_data[stats, i]
-        mean_value = values.mean()
-        relative_max_value = np.max(np.abs(values - mean_value))
+    time: ArrayLike, # t^* = U_inf t / D, NOT tau = f_N t
+    data_true: np.ndarray,
+    data_pred: np.ndarray,
+    state_variable_names: Sequence[str],
+    parameter_values_dict: Mapping[str, float],
 
-        # Set the y-axis limits based on the mean value and relative maximum value
-        ax.set_ylim(mean_value - 1.1 * relative_max_value, mean_value + 1.1 * relative_max_value)
-        
-        # Set the x-axis limits
-        ax.set_xlim(xlim)
-        
-        # Turn on grid for all subplots
-        ax.grid(True, which='both', linestyle='-', linewidth=0.5, alpha=0.5)
-        
-        # Turn off top and right spines for all subplots
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        
-        # Make linewidth of bottom and left spines thin
-        ax.spines['bottom'].set_linewidth(0.8)
-        ax.spines['left'].set_linewidth(0.8)
-        
+    error_metrics_dict: Mapping[str, Mapping[str, float]] | None = None, # Optional dictionary containing error metrics for each state variable
+
+    # Visualization related arguments
+    xlim: Sequence[float] | None = None,
+
+    ylim_mean_time_start: float = 0,
+    ylim_mean_time_end: float | None = None,
+
+    ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference', # 'reference', 'prediction', or 'both'; legacy 'true'/'pred' also work.
+    crop_to_xlim: bool = False,
+) -> tuple[Figure, Axes | np.ndarray]:
+    """Return comparison axes for finite aligned reference/prediction signals.
+
+    Time and display/statistics limits use t*. ylim_source chooses reference,
+    prediction or both (legacy true/pred aliases remain accepted). Independent
+    statistics bounds set symmetric limits about the selected mean, with 10%
+    padding. error_metrics_dict supplies per-channel labels. Cropping is opt-in;
+    successful figures belong to the caller and failed rendering closes them.
+
+    Parameters:
+        time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
+        data_true (numpy.ndarray): Reference samples, with columns ordered by their reference names.
+        data_pred (numpy.ndarray): Predicted samples, with columns ordered by their prediction names.
+        state_variable_names (Sequence[str]): Ordered names of the state columns to display.
+        parameter_values_dict (Mapping[str, float]): Parameter labels and values displayed with the figure.
+        error_metrics_dict (Mapping[str, Mapping[str, float]] or None): Per-variable metrics included in comparison annotations. Default: None
+        xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range. Default: None
+        ylim_mean_time_start (float): First recorded t* included in y-limit statistics. Default: 0
+        ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
+        ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Data used to calculate y limits: reference, prediction, or both; true and pred are aliases. Default: 'reference'
+        crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+    """
+    sources = {'true': 'reference', 'pred': 'prediction', 'reference': 'reference', 'prediction': 'prediction', 'both': 'both'}
+    if ylim_source not in sources:
+        raise ValueError("ylim_source must be 'reference', 'prediction', or 'both'.")
+    ylim_source = sources[ylim_source]
+    time, xlim, stats, visible = _time_windows(time, xlim, ylim_mean_time_start, ylim_mean_time_end, crop_to_xlim)
+    data_true = _validate_plot_data(time, data_true, state_variable_names)
+    data_pred = _validate_plot_data(time, data_pred, state_variable_names)
+    ylim_data = data_true if ylim_source == 'reference' else data_pred
+    fig, axs = create_subplots(len(state_variable_names))
+    try:
+
+        suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
+
+        # Avoid an empty math expression when no parameter values were supplied.
+        if suptitle_str:
+            fig.suptitle(f"${suptitle_str}$", fontsize=14)
+
+        for i, state_variable_name in enumerate(state_variable_names):
+            ax = axs[i] if len(state_variable_names) > 1 else axs
+
+            # Plot the true data for the current state variable
+            ax.plot(time[visible], data_true[visible, i], label=f"Reference ${state_variable_name}$", color=PLOT_COLORS[0], linewidth=LINE_WIDTH)
+
+            # Plot the predicted data for the current state variable
+            ax.plot(time[visible], data_pred[visible, i], label=f"Predicted ${state_variable_name}$", color=PLOT_COLORS[1], linestyle='--', linewidth=LINE_WIDTH)
+
+            # Turn on X-label for the last subplot only
+            if i == len(state_variable_names) - 1:
+                ax.set_xlabel("$t^*$", fontsize=12)
+
+            # Turn on Y-label for all subplots
+            ax.set_ylabel(f"${state_variable_name}$", fontsize=12)
+
+            # Add error metrics to top right corner of the subplot if provided
+            if error_metrics_dict is not None and state_variable_name in error_metrics_dict:
+                error_metrics = error_metrics_dict[state_variable_name]
+                error_metrics_str = ', '.join([f"${key}={value:.4f}$" for key, value in error_metrics.items()])
+
+                ax.text(0.98, 0.95, error_metrics_str, transform=ax.transAxes, fontsize=10,
+                        verticalalignment='top', horizontalalignment='right',
+                        bbox=dict(facecolor='white', alpha=0.5, edgecolor='none')
+                        )
+
+            # Calculate limits from the selected source without concatenating the full trajectories.
+            if ylim_source == 'both':
+                reference_values, predicted_values = data_true[stats, i], data_pred[stats, i]
+                mean_value = (reference_values.mean() + predicted_values.mean()) / 2
+                relative_max_value = max(abs(reference_values.min() - mean_value), abs(reference_values.max() - mean_value), abs(predicted_values.min() - mean_value), abs(predicted_values.max() - mean_value))
+            else:
+                values = ylim_data[stats, i]
+                mean_value = values.mean()
+                relative_max_value = max(abs(values.min() - mean_value), abs(values.max() - mean_value))
+
+            # Set the y-axis limits based on the mean value and relative maximum value
+            ax.set_ylim(mean_value - 1.1 * relative_max_value, mean_value + 1.1 * relative_max_value)
+
+            # Set the x-axis limits
+            ax.set_xlim(xlim)
+
+
+    except BaseException:
+
+        # Close partially drawn figures when Matplotlib raises before returning to the caller.
+        plt.close(fig)
+        raise
+
     return fig, axs

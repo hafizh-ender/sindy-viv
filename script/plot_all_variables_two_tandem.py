@@ -1,14 +1,9 @@
 import argparse
-import json
 import os
-import pickle
-from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pysindy as ps
+import matplotlib.pyplot as plt
 
-import sindy_viv
+
 from sindy_viv.case_bryan.constants import (
     TWO_TANDEM_CYLINDERS_CASE_NAME,
     TWO_TANDEM_CYLINDERS_MSTAR,
@@ -18,7 +13,8 @@ from sindy_viv.case_bryan.constants import (
 from sindy_viv.case_bryan.input import load_data_two_tandem_cylinders
 from sindy_viv.case_bryan.plot import plot_data
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse and validate this command line; --help describes available settings."""
     argument_parser = argparse.ArgumentParser(description="Plot all state variables for two tandem oscillating cylinders for all VR and L/D cases.")
     argument_parser.add_argument(
         "--xlim",
@@ -39,39 +35,34 @@ def parse_args():
         type=int,
         nargs='+',
         default=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-        help="List of VR cases to evaluate SINDy on."
+        help="List of VR cases to plot."
     )
     argument_parser.add_argument(
         "--lpd_list",
         type=float,
         nargs='+',
         default=[1.5, 2.0, 3.0, 3.5, 4.0],
-        help="List of L/D cases to evaluate SINDy on."
+        help="List of L/D cases to plot."
     )
-    argument_parser.add_argument(
-        "--save_pkl",
-        action="store_true",
-        help="Flag to save the SINDy model as a pickle file."
-    )
-    
     return argument_parser.parse_args()
 
-def main():
+def main() -> None:
+
     # Load the arguments
+    """Run this experimental analysis/plot command."""
     args = parse_args()
-    
     re = TWO_TANDEM_CYLINDERS_RE
     mstar = TWO_TANDEM_CYLINDERS_MSTAR
-    
-    # Loop through each VR and L/D case and evaluate SINDy
+
+    # Loop through each VR and L/D case and plot the variables
     for lpd in args.lpd_list:
         for vr in args.vr_list:
+
             # Load data for current VR
             time, data = load_data_two_tandem_cylinders(re, mstar, vr, lpd)
-    
-            # Return time to its scaled version
+
+            # Return time to t* from tau
             time = time * vr
-            
             fig, axs = plot_data(
                 time=time,
                 data=data,
@@ -84,23 +75,32 @@ def main():
                 ylim_mean_time_start=args.ylim_mean_time[0],
                 ylim_mean_time_end=args.ylim_mean_time[1],
             )
-        
-            # Save the plot
-            results_path = os.path.join(
-                "results",
-                TWO_TANDEM_CYLINDERS_CASE_NAME,
-                f"figures",
-                f"LpD = {lpd}",
-                f"VR = {vr}",
-                f"plot_{args.xlim[0]}_{args.xlim[1]}.png" if args.xlim is not None else f"plot_full_range.png"
-            )
-            
-            # Create the results directory if it doesn't exist
-            os.makedirs(os.path.dirname(results_path), exist_ok=True)
-            
-            # Save the figure
-            fig.savefig(results_path, dpi=300)
-                    
+
+            try:
+
+                # Save the plot
+                results_path = os.path.join(
+                    "results",
+                    TWO_TANDEM_CYLINDERS_CASE_NAME,
+                    f"figures",
+                    f"LpD = {lpd}",
+                    f"VR = {vr}",
+                    f"plot_{args.xlim[0]}_{args.xlim[1]}.png" if args.xlim is not None else f"plot_full_range.png"
+                )
+
+                # Create the results directory if it doesn't exist
+                os.makedirs(os.path.dirname(results_path), exist_ok=True)
+
+                # Save the figure
+                fig.savefig(results_path, dpi=300)
+            finally:
+
+                # Release line buffers even if saving a batch figure fails.
+                plt.close(fig)
+
+                # Release local references before loading the next full trajectory.
+                del fig, axs, time, data
+
 
 if __name__ == "__main__":
     main()
