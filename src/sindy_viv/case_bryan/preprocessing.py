@@ -1,81 +1,52 @@
+
+from __future__ import annotations
 import numpy as np
 
-def convert_to_array(data_dict, dtype=np.float64):
-    """
-    Convert a dictionary of data to a NumPy array.
-    
-    Parameters:
-        data_dict (dict): Dictionary containing the data with variable names as keys
-        dtype (numpy.dtype or None): Output data dtype.
-    
-    Returns:
-        tuple: A tuple containing the time array and the data array. Shape: (N,) and (N, num_variables) respectively.
-    """
-    # First, store all variable names in a list to maintain the order
-    variable_names = list(data_dict.keys())
-    if not variable_names:
-        raise ValueError("At least one state variable is required.")
-    
-    reference_time = data_dict[variable_names[0]]['time'].to_numpy()
-    
-    # Check whether all variables has the same time array. If not, raise an error.
-    for var in variable_names[1:]:
-        if not np.array_equal(reference_time, data_dict[var]['time'].to_numpy()):
-            raise ValueError(f"Time arrays for variable {var} do not match the time array for {variable_names[0]}.")
-    
-    # Now, we can create a NumPy array to hold the data. The shape of the array will be (num_time_points, num_variables).
-    num_time_points = len(data_dict[variable_names[0]])
-    num_variables = len(variable_names)
-    
-    # Infer a common value dtype if dtype is None, otherwise use the provided dtype.
-    if dtype is None:
-        dtype = np.result_type(*(data_dict[var]['error'].dtype for var in variable_names))
-        
-    # Initialize the data array with the appropriate shape and dtype.
-    data_array = np.empty((num_time_points, num_variables), dtype=dtype)
-    
-    # Fill the array with the data
-    for i, var in enumerate(variable_names):
-        data_array[:, i] = data_dict[var]['error']
-    
-    # Keep timestamp precision independent of the chosen state dtype.
-    time_array = np.array(reference_time, dtype=reference_time.dtype, copy=True)
-    
-    return time_array, data_array
+# Compatibility import for older callers; active pipelines load processed arrays directly.
+from .compatibility.dataframe_conversion import convert_to_array
 
-def solve_time_duplicates(time_array, data_array, strategy='uniform'):
-    """
-    Reconstruct a uniform time axis without dropping or averaging rows.
-    
+def solve_time_duplicates(
+    time_array: np.ndarray,
+    data_array: np.ndarray,
+    strategy: str = 'uniform',
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reconstruct Bryan's uniform recorded time axis without dropping data rows.
+
+    This dataset-specific strategy trusts the first two timestamps to define the
+    step. It reconstructs every timestamp, even if later inputs contain gaps;
+    it is not a general duplicate-merging or interpolation routine. time_array
+    must be a floating 1-D array with at least two entries and a positive initial
+    step; data_array has the same row count. Returns a new time axis and the
+    original data object. The only supported strategy is 'uniform'.
+
     Parameters:
-        time_array (np.ndarray): Array of time points
-        data_array (np.ndarray): Array of data points corresponding to the time points
-        
-    Returns:
-        tuple: A tuple containing the new time array and the new data array with duplicates resolved
+        time_array (numpy.ndarray): Recorded sample times aligned with data_array.
+        data_array (numpy.ndarray): Sample values aligned with time_array.
+        strategy (str): Duplicate-time handling strategy, as described by this function. Default: 'uniform'
     """
     if strategy == 'uniform':
+
         # This is the physically correct strategy
         # For Bryan's data, the sampling frequency is supposed to be constant
         # Infer the expected step from the first two recorded timestamps.
         time_array = np.asarray(time_array)
-        
+
         if time_array.ndim != 1 or len(time_array) < 2:
             raise ValueError("Time must be a 1-D array with at least two entries.")
-        
+
         if len(time_array) != len(data_array):
             raise ValueError("Time and data must have the same number of rows.")
-        
+
         # Promote before subtraction to retain the input sampling precision.
         expected_time_step = float(time_array[1]) - float(time_array[0])
         if not np.isfinite(expected_time_step) or expected_time_step <= 0:
             raise ValueError("The initial time step must be finite and positive.")
-        
+
         # Update it in place to avoid temporary arrays.
         processed_time_array = np.arange(len(time_array), dtype=time_array.dtype)
         processed_time_array *= expected_time_step
         processed_time_array += time_array[0]
-        
+
         return processed_time_array, data_array
     else:
         raise ValueError(f"Unknown strategy '{strategy}' for solving time duplicates. Supported strategies: 'uniform'.")
