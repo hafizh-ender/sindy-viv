@@ -1,0 +1,8 @@
+{
+    "module": "sindy_viv.feature_library.inverse_polynomial_library",
+    "class_name": "InversePolynomialLibrary",
+    "kwargs": {
+        "degree": 2,
+        "include_bias": true
+    }
+}

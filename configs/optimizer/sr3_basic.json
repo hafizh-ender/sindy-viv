@@ -1,0 +1,13 @@
+{
+    "module": "pysindy.optimizers",
+    "class_name": "SR3",
+    "kwargs": {
+        "reg_weight_lam": 0.005,
+        "regularizer": "l0",
+        "relax_coeff_nu": 1.0,
+        "max_iter": 1000,
+        "normalize_columns": false,
+        "unbias": false,
+        "verbose": true
+    }
+}

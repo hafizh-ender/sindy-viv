@@ -1,0 +1,24 @@
+{
+    "module": "pysindy.feature_library",
+    "class_name": "GeneralizedLibrary",
+    "kwargs": {
+        "libraries": [
+            {
+                "module": "pysindy.feature_library.polynomial_library",
+                "class_name": "PolynomialLibrary",
+                "kwargs": {
+                    "degree": 2,
+                    "include_bias": true
+                }
+            },
+            {
+                "module": "sindy_viv.feature_library.inverse_polynomial_library",
+                "class_name": "InversePolynomialLibrary",
+                "kwargs": {
+                    "degree": 2,
+                    "include_bias": false
+                }
+            }
+        ]
+    }
+}

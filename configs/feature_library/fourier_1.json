@@ -1,0 +1,9 @@
+{
+    "module": "pysindy.feature_library.fourier_library",
+    "class_name": "FourierLibrary",
+    "kwargs": {
+        "n_frequencies": 1,
+        "include_sin": true,
+        "include_cos": true
+    }
+}
