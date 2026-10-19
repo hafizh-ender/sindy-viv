@@ -10,12 +10,31 @@ explicit `if`/`elif` branches for `cylinder_type` and `parameterization`.
 | `single` | `vr` | One model across selected VR values | `model` |
 | `two_tandem` | `individual` | One model per spacing and VR | `{(lpd, vr): model}` |
 | `two_tandem` | `vr` | One model across VR values at each spacing | `{lpd: model}` |
+| `two_tandem` | `lpd` | One model across spacings at each fixed VR | `{vr: model}` |
 | `two_tandem` | `vr_lpd` | One model across selected spacings and VR values | `model` |
 
 The computation package is `sindy_viv.case_bryan.compute_sindy`. The scripts are
 in the repository's existing `script/` directory.
 
 ## Standard SINDy
+
+All six workflows support `dynamics_case=1` through `4`:
+
+| Case | States per cylinder | Measured controls per cylinder |
+| --- | --- | --- |
+| 1 | h, hdot, CL | None |
+| 2 | h, hdot, CL, CLdot | None |
+| 3 | h, hdot | CL |
+| 4 | CL, CLdot | h, hdot, hddot |
+
+For cases 3 and 4, `state_feature_library_case` acts on states and measured
+controls. In parametric runs, `input_feature_library_case` still acts only on
+VR, L/D, or `[L/D, V_R]`; controls do not become parameters. The fitted model receives
+controls before constant parameters in its `u` arrays.
+
+All differentiation uses the loader's tau without dividing
+by VR again. Cases 2 and 4 differentiate lift rates with the supplied
+differentiator; case 4 loads the recorded acceleration channel as a control.
 
 ```python
 from sindy_viv.case_bryan.compute_sindy import compute_sindy
@@ -34,7 +53,7 @@ model = compute_sindy(
 ```
 
 All fits take `state_feature_library_case`. Select `parameterization="individual"`
-for individual models, or `"vr"`/`"vr_lpd"` for parametric models; the latter
+for individual models, or `"vr"`/`"lpd"`/`"vr_lpd"` for parametric models; the latter
 also require `input_feature_library_case`. Library presence never selects the
 fit mode. To switch to individual runs, change `parameterization` and remove
 the input-library argument. Tandem fits also accept `lpd_list`. All configurations
@@ -64,7 +83,7 @@ depends on Bryan-specific data.
 
 ## Reciprocal features
 
-All five branches accept `InversePolynomialLibrary` through the same
+All six branches accept `InversePolynomialLibrary` through the same
 JSON configuration loader as PySINDy's built-in libraries. Its constructor
 options and defaults match `PolynomialLibrary`, including interaction products
 and a bias. Values and outputs retain at least float64 precision.
@@ -83,7 +102,7 @@ with an ordinary polynomial state library. The joint model receives parameters
 in `[L/D, V_R]` order, and generates reciprocal products on these parameters
 before tensoring them with state features. The CSV feature names, pickle
 exports, derivative evaluation, and integral evaluation support these products
-in dynamics cases 1 and 2.
+in all four dynamics cases, subject to the reciprocal library's nonzero-input requirement.
 
 Individual models have no parameter library: using the inverse configuration
 there generates features such as `1/h_0`, not `1/V_R`. Reciprocal state features
@@ -105,7 +124,7 @@ InversePolynomialLibrary(degree=2, include_bias=False)
 ```
 
 Keep only the polynomial bias to avoid duplicate feature names. This combined
-parameter library supports both `V_R^2` and reciprocal L/D–VR interactions.
+parameter library supports both `V_R^2` and reciprocal L/DÃ¢â‚¬â€œVR interactions.
 
 ## ConstrainedSR3
 
@@ -113,6 +132,12 @@ The shared computation supports
 `optimizer_case="configs/optimizer/constrained_sr3_basic.json"`. Constraints are
 generated after input preparation, from the pointwise library's actual feature
 names. There is no need to write coefficient indices or LHS/RHS arrays in JSON.
+
+Cases 1Ã¢â‚¬â€œ3 constrain the structural equations, with lift treated as a measured
+control in case 3. Case 4 constrains only `CL' = CLdot`.
+The remaining equations are fitted freely. Parametric structural constraints
+require a parameter bias and the positive-power `V_R^2` feature; the state
+library must retain the necessary linear state/control terms.
 
 For each cylinder, the preparation enforces the relations used in `script/old/`:
 
@@ -180,10 +205,10 @@ arguments and defaults, including `--tweak0`, `--tweakf`, `--K`, `--H_xt`, `--p`
 and `--random_state`. Their `--help` output remains available; running a
 computation reaches its placeholder.
 
-The five standard CLI entry points also retain their other arguments and defaults.
+The six standard CLI entry points also retain their other arguments and defaults.
 Each script passes its fixed selectors to the shared function. Python callers
 should replace the old case-specific function imports with `compute_sindy` or
-`compute_weak_sindy` and the selectors shown above. Saved model paths are unchanged.
+`compute_weak_sindy` and the selectors shown above. Dataset selections and fitting-window folders identify each saved model.
 
 Every computation CLI uses `--state_feature_library_case`, including the
 individual scripts. Individual scripts select individual fits; parametric
@@ -198,3 +223,127 @@ References:
 
 - [PySINDy ConstrainedSR3 documentation](https://pysindy.readthedocs.io/en/stable/generated/pysindy.optimizers.ConstrainedSR3.html)
 - [PySINDy SINDyCP overview](https://pysindy.readthedocs.io/en/latest/examples/sindy-addl-examples/36401db/example.html)
+
+
+## L/D-only parameterization
+
+Use `parameterization="lpd"` with `cylinder_type="two_tandem"`. Each selected
+VR gets one model fitted across `lpd_list`; the function returns `{vr: model}`.
+The parameter library receives only `L/D`. VR remains fixed for that model and
+still converts recorded time to tau in the loader. ConstrainedSR3 uses the fixed
+VR in its structural lift coefficient, with parameter bias features `1 h` and
+`1 CL`; it does not require a `V_R^2` feature for this mode.
+
+New CLI entry point:
+
+```powershell
+python script/perform_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json
+```
+
+Cases 1 through 4 support this mode, including measured controls,
+reciprocal/tensored parameter libraries, and physical constraints.
+WeakSINDy remains a placeholder; its existing CLI inputs are unchanged.
+
+## Fitting time bounds
+
+The only fitting-window input is `fit_window_case` / `--fit_window_case`, a JSON config
+under `configs/fit_window/single/` or `configs/fit_window/two_tandem/`.
+Single-cylinder files map `VR -> {tstar0, tstarf}`. Tandem files map
+`LpD -> VR -> {tstar0, tstarf}`. The limits are properties of trajectories,
+independent of dynamics case, parameterization, and CLI list order.
+
+```text
+--fit_window_case configs/fit_window/two_tandem/overall.json
+```
+
+`overall.json` uses available endpoints. Fill the first-half or sinusoidal
+preset's selected trajectory limits before using it; unused placeholders can
+remain. The complete schema and examples are in
+[`configs/fit_window/README.md`](../../../../configs/fit_window/README.md).
+The full nested config and its source/name are copied into `training.json`,
+alongside each trajectory's resolved bounds and actual sample coverage.
+Omitting `fit_window_case` loads the cylinder-specific `overall.json` from
+this repository. Training has no `tstar0` or `tstarf` arguments or CLI flags;
+those options are reserved for evaluation. Set trajectory endpoints in the
+JSON file. Selected bounds must be finite or null, increase when both are
+specified, lie within available data, and retain at least two samples.
+
+The full signal is differentiated in float64 tau first, then t*, X, X_dot, and U
+are cropped together before fitting. The retained time array stays tau; fitting
+bounds never introduce another VR division. Retaining differentiation context
+avoids new derivative artifacts at fitting-window boundaries. Only complete
+signals are used by the differentiator; fitting and metrics can select subsets.
+
+## Training selections and saved artifacts
+
+Every parametric output adds the actual training selection before its fitting
+window: `VR=3,4,5` for single cylinders, and `LpD=1.5,2/VR=5,8,11` for tandem
+cylinders. VR-only models list one fixed L/D; L/D-only models list one fixed VR;
+joint models list the whole selected grid. Selection labels are numerically
+sorted, while `training.json` preserves the actual trajectory order.
+
+For the L/D-only command above, the end of the output path is:
+
+```text
+parametric_lpd/state_polynomial_3/input_polynomial_2/stlsq_basic/
+  LpD=1.5,2,3/VR=8/fit_window=sinusoidal/time=200..600/
+    model.csv
+    model.pkl          # if --save_pkl
+    training.json
+    evaluation/
+```
+
+Config-driven fits insert `fit_window=<config-stem>/` before the time folder,
+for example `LpD=1.5,2,3/VR=8/fit_window=sinusoidal/time=200..600/`.
+Changing limits in the same config creates another time folder; the old model
+and its saved config snapshot remain available.
+
+All new standard fits, including individual ones, have a time folder. Full
+signals use `time=all`. A shared interval uses `time=200..600`; open endpoints
+use `start` or `end`. Different per-trajectory intervals use
+`time=per-trajectory-<12-character hash>`. This deterministic ID represents the
+parameter-to-window mapping, so changing input order without changing that
+mapping does not create another window ID. `training.json` records every
+requested bound, actual retained t*/tau endpoints, sample count, parameter pair,
+and the configuration snapshots. Different datasets or time windows coexist;
+repeating the same selection and window writes the same destination.
+
+A directory plus JSON is preferable here to `model_timerange1.csv` and
+`timerange1.json`: it preserves the existing coefficient filename and keeps
+pickles and evaluation artifacts associated with one fit.
+Sequential numbers depend on save order and require a separate lookup table.
+The choice is informed by [MLflow's per-run artifacts](https://mlflow.org/docs/latest/tracking/)
+and [DVC's structured experiment metadata](https://doc.dvc.org/user-guide/experiment-management);
+no new tracking dependency is introduced. This directory convention is a local
+design choice, rather than a requirement of either tool.
+
+Existing saved models are left in place and remain readable by evaluation.
+See the evaluation README for independent training-model selection.
+## Retained model data
+
+Models fitted through `perform_sindy` release the optimizer's training design
+matrix `Theta_` before returning or saving a pickle. Fitted coefficients and
+library metadata remain available. `model.predict(X_new, u=U_new)` predicts
+state derivatives from new states and the measured controls/constant parameters
+used by that model; models without controls or parameters need only `X_new`.
+
+
+
+## Preparation and dtype
+
+Each raw trajectory is loaded, prepared on its complete float64 tau axis, and
+cropped before the next trajectory is loaded. This bounds preparation memory
+without changing full-signal derivative stencils. PySINDy fitting still holds
+the selected prepared trajectories and its feature matrices.
+
+Preparation functions now accept keyword-only dtype, defaulting to np.float64.
+Choose dtype=np.float32 explicitly for float32 states, controls, derivatives
+and parameter columns. Time always remains float64. Differentiator computation
+precision follows its own configuration; preparation controls returned storage.
+Named internal PreparedTrajectory records preserve the existing public tuple
+wrappers. The physical Cases 1-4 and ConstrainedSR3 equations remain unchanged.
+
+Library metadata setup samples one row only for exact known shape-only
+polynomial, Fourier, custom and selected-polynomial implementations (including
+composites built entirely from these). Unknown/data-adaptive/reciprocal libraries
+retain full-data fitting and validation.
