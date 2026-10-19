@@ -1,76 +1,97 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from numpy.typing import ArrayLike
+from pysindy.feature_library.base import BaseFeatureLibrary
+from pysindy.optimizers import BaseOptimizer
+from sindy_viv._typing import Differentiator
+from typing import NoReturn
+import numpy as np
 import pysindy as ps
 
-# Data-Information-Agnostic SINDy
-# Basically does three things: prepare feature library, prepare optimizer, and perform SINDy
-# Differentiation is perfor
-
-# Input:
-# - Data: t, X (state variables), U (control input), state variable names, control input names, X_dot (derivative of state variables)
-# - Settings:
-#   > feature library: object of type pysindy.feature_library.FeatureLibrary and keyword arguments for the feature library
-#   > optimizer: object of type pysindy.optimizers.Optimizer and keyword arguments for the optimizer,
-#                except for ps.ConstrainedSR3 which requires additional keyword arguments for the constraints based feature library
-# Output: SINDy model
-
-# Process:
-# 1. Load all information (t, X, U, state variable names, control input names, X_dot)
-# 2. Get feature library and optimizer based on the provided settings
-# 3. Perform SINDy using the provided data and the prepared feature library and optimizer
+# Generic fitting accepts already prepared libraries, optimizers and optional derivatives.
 
 def perform_sindy(
-    time, 
-    state_variable_data,
-    feature_library, 
-    optimizer,
-    state_variable_differentiated_data=None,
-    differentiation_method=None,
-    feature_names=None,
-    input_variable_data=None,
-):
-    """
-    Perform SINDy on the given time-series data.
+    time: ArrayLike,
+    state_variable_data: np.ndarray | list[np.ndarray],
+    feature_library: BaseFeatureLibrary,
+    optimizer: BaseOptimizer,
+    state_variable_differentiated_data: np.ndarray | list[np.ndarray] | None = None,
+    differentiation_method: Differentiator | None = None,
+    feature_names: Sequence[str] | None = None,
+    input_variable_data: np.ndarray | list[np.ndarray] | None = None,
+) -> ps.SINDy:
+    """Perform SINDy on the given time-series data.
 
     Parameters:
-        time (numpy.ndarray or list[numpy.ndarray]): Time points corresponding to the state variable data. Shape: (N,) or list of arrays for multiple trajectories.
+        time (array-like): Time points or a positive scalar sample step in the same coordinate as x_dot. Shape: (N,) or a list of trajectory axes.
         state_variable_data (numpy.ndarray or list[numpy.ndarray]): State variable data. Shape: (N, num_state_variables) or list of arrays for multiple trajectories.
-        feature_library (pysindy.feature_library.FeatureLibrary): Feature library object.
-        optimizer (pysindy.optimizers.Optimizer): Optimizer object.
-        state_variable_differentiated_data (numpy.ndarray or list[numpy.ndarray], optional): Pre-computed derivative of the state variables. Shape: (N, num_state_variables) or list of arrays for multiple trajectories.
-        differentiation_method (pysindy.differentiation.DifferentiationMethod, optional): Differentiation method object.
-        feature_names (list of str, optional): Names of the features.
-        input_variable_data (numpy.ndarray or list[numpy.ndarray], optional): Input variable data. Shape: (N, num_input_variables) or list of arrays for multiple trajectories.
+
+        feature_library (BaseFeatureLibrary): Feature library object.
+        optimizer (BaseOptimizer): Optimizer object.
+
+        state_variable_differentiated_data (numpy.ndarray, list[numpy.ndarray], or None): Pre-computed derivative of the state variables. Shape: (N, num_state_variables) or list of arrays for multiple trajectories. Default: None
+
+        differentiation_method (Differentiator or None): Differentiation method object. Default: None
+
+        feature_names (Sequence[str] or None): Raw state names followed by control/parameter names; excludes expanded library terms. Default: None
+        input_variable_data (numpy.ndarray, list[numpy.ndarray], or None): Input variable data. Shape: (N, num_input_variables) or list of arrays for multiple trajectories. Default: None
 
     Returns:
         pysindy.SINDy: Fitted SINDy model.
+
+    Precomputed derivatives take precedence over internal differentiation.
+    The optimizer's training design matrix Theta_ is released after fitting.
+    model.predict(X, u=U) evaluates derivatives at new state/control samples
+    using the fitted library and coefficients; it does not reuse training X/U.
     """
     if differentiation_method is None and state_variable_differentiated_data is None:
         raise ValueError("Either 'differentiation_method' or 'state_variable_differentiated_data' must be provided.")
-    
+
     model = ps.SINDy(
         feature_library=feature_library,
         optimizer=optimizer,
         differentiation_method=differentiation_method,
     )
-    
+
     # Explicit x_dot skips internal differentiation without coupling time and state dtypes.
     model.fit(
-        x=state_variable_data, 
-        t=time, 
-        x_dot=state_variable_differentiated_data, 
-        feature_names=feature_names, 
+        x=state_variable_data,
+        t=time,
+        x_dot=state_variable_differentiated_data,
+        feature_names=feature_names,
         u=input_variable_data
     )
-    
+
+    # Prediction uses new X/U and fitted coefficients; discard the retained training design matrix.
+    if hasattr(model.optimizer, 'Theta_'):
+        del model.optimizer.Theta_
+
     return model
 
 def perform_weak_sindy(
-    time,
-    state_variable_data,
-    feature_library,
-    optimizer,
-    feature_names=None,
-    input_variable_data=None,
-    parameter_library=None,
-):
-    """Placeholder for a future WeakSINDy implementation."""
+    time: ArrayLike,
+    state_variable_data: np.ndarray | list[np.ndarray],
+    feature_library: BaseFeatureLibrary,
+    optimizer: BaseOptimizer,
+    feature_names: Sequence[str] | None = None,
+    input_variable_data: np.ndarray | list[np.ndarray] | None = None,
+    parameter_library: BaseFeatureLibrary | None = None,
+) -> NoReturn:
+    """Reserve the generic weak-fitting interface without performing any work.
+
+    Always raises NotImplementedError; all inputs are intentionally retained
+    for the future implementation and are neither validated nor mutated.
+
+    Parameters:
+        time (array-like): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        state_variable_data (numpy.ndarray or list[numpy.ndarray]): State sample matrix, or a list of matrices for multiple trajectories.
+
+        feature_library (BaseFeatureLibrary): Feature-library instance used to construct the regression basis.
+        optimizer (BaseOptimizer): Optimizer instance used to fit the feature coefficients.
+
+        feature_names (Sequence[str] or None): State names followed by control and parameter names, before feature expansion. Default: None
+        input_variable_data (numpy.ndarray, list[numpy.ndarray], or None): Control and parameter samples aligned with each state trajectory, or None. Default: None
+        parameter_library (BaseFeatureLibrary or None): Reserved parameter basis for future weak fitting. Default: None
+    """
     raise NotImplementedError("WeakSINDy is not implemented.")
