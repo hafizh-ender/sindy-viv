@@ -18,7 +18,7 @@ import pandas as pd
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 
-from sindy_viv.case_bryan.plot import plot_compare_prior_check
+from sindy_viv.case_bryan.plot import plot_compare_prior_check, plot_selection_suffix
 from sindy_viv.case_bryan.validation import validate_selection
 from sindy_viv.feature_library.functions import fit_library_metadata
 from sindy_viv.metrics.numerical import normalized_root_mean_squared_error, relative_l2_error
@@ -327,6 +327,8 @@ def report_evaluation(
     solver: dict[str, Any] | None = None,
     ylim_source: Literal['reference', 'prediction', 'both', 'true', 'pred'] = 'reference',
     return_data: bool = True,
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
 ) -> EvaluationRecord:
     """Save selected-window metrics and optionally a comparison figure closed after saving.
 
@@ -361,6 +363,8 @@ def report_evaluation(
         ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Data used to calculate y limits: reference, prediction, or both; true and pred are aliases. Default: 'reference'
 
         return_data (bool): Whether returned reports retain time, reference, and prediction arrays. Default: True
+        plot_variables (Sequence[str] or None): Variable families or exact output-channel names to display, without filtering metrics. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to display, without filtering metrics. Default: None
     """
     if reference.shape != prediction.shape or not np.all(np.isfinite(reference)):
         raise ValueError("Reference and prediction must have matching finite arrays.")
@@ -425,8 +429,10 @@ def report_evaluation(
             parameter_values_dict=parameter_values, error_metrics_dict=metrics,
             xlim=xlim, ylim_mean_time_start=time_star[0] if start is None else start,
             ylim_mean_time_end=stop, ylim_source=ylim_source,
+            plot_variables=plot_variables, plot_cylinders=plot_cylinders,
         )
-        figure_path = report_dir / f"{kind}_comparison_{suffix}.png"
+        selection_suffix = plot_selection_suffix(variable_names, plot_variables, plot_cylinders)
+        figure_path = report_dir / f"{kind}_comparison_{suffix}{selection_suffix}.png"
 
         try:
             figure.savefig(figure_path, dpi=300)

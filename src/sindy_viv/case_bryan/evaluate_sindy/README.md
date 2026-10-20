@@ -264,9 +264,22 @@ The default is `reference`. This selects the data used for y-axis limits within
 API uses the same `ylim_source` argument. Legacy `true` and `pred` values remain
 accepted by the plotting/API functions.
 
-Active plots share the `case_bryan.plot` template: thin black/dark-blue/dark-red
+Active plots share the `case_bryan.plot` template: thin black, red, and blue
 lines, hidden top/right spines, and six inches per subplot column. Frequency
 figures reserve extra height for their multi-line titles.
+
+All evaluation CLIs also accept `--plot_variables` and `--plot_cylinders`.
+For example, `--plot_variables hddot CLdot --plot_cylinders 1` displays only
+those available derivative channels for the downstream tandem cylinder.
+Integral plots use state names, such as `h` and `CL`, instead of their derivatives.
+Families `h`, `hdot`, `hddot`, `CL`, `CLdot`, `CLddot`, and `CD`, or exact
+LaTeX names, are supported. The two filters intersect; unavailable variables
+or cylinders raise ValueError. Omit either option to include all available values.
+
+These options filter figures only: prediction, integration, and all reported
+metrics retain every modeled channel. Explicit selections are recorded in the
+figure filename, preserving the default full-channel figure. The Python API
+uses `plot_variables` and `plot_cylinders` with the same defaults of None.
 
 
 

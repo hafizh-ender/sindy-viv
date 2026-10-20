@@ -7,11 +7,81 @@ from matplotlib.figure import Figure
 from numpy.typing import ArrayLike
 from typing import Literal
 import numpy as np
+import re
 
 import matplotlib.pyplot as plt
 
 PLOT_COLORS = ('black', 'red', 'blue')
 LINE_WIDTH = 0.6
+
+PLOT_VARIABLE_TEMPLATES = {
+    'h': 'h_{}', 'hdot': r'\dot{{h}}_{}', 'hddot': r'\ddot{{h}}_{}',
+    'CL': 'C_{{L{}}}', 'CLdot': r'\dot{{C}}_{{L{}}}', 'CLddot': r'\ddot{{C}}_{{L{}}}',
+    'CD': 'C_{{D{}}}',
+}
+
+
+def select_plot_variables(
+    variable_names: Sequence[str],
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
+) -> list[str]:
+    """Select available channels by variable family/exact name and cylinder ID.
+
+    Families apply to every selected cylinder; exact LaTeX names select individual
+    channels. Both filters intersect, and source column order is retained.
+    Unknown variables/cylinders and empty selections raise ValueError.
+
+    Parameters:
+        variable_names (Sequence[str]): Available channel names in data-column order.
+        plot_variables (Sequence[str] or None): Families h, hdot, hddot, CL, CLdot, CLddot, CD, or exact channel names; None selects all. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs 0 and/or 1; None selects all available cylinders. Default: None
+    """
+    names = list(variable_names)
+    if not names or len(set(names)) != len(names):
+        raise ValueError("Plot variable names must be nonempty and unique.")
+    channels = {
+        template.format(cylinder): (family, cylinder)
+        for family, template in PLOT_VARIABLE_TEMPLATES.items() for cylinder in (0, 1)
+    }
+    selected = names
+    if plot_variables is not None:
+        requested = [plot_variables] if isinstance(plot_variables, str) else list(plot_variables)
+        available_families = {channels[name][0] for name in names if name in channels}
+        unknown = [name for name in requested if name not in names and name not in available_families]
+        if not requested or unknown:
+            raise ValueError(f"Unknown or empty plot_variables {requested!r}; available channels: {names!r}.")
+        selected = [name for name in selected if name in requested or channels.get(name, (None, None))[0] in requested]
+    if plot_cylinders is not None:
+        cylinders = list(plot_cylinders)
+        available_cylinders = {channels[name][1] for name in names if name in channels}
+        if (not cylinders or any(isinstance(cylinder, (bool, np.bool_))
+                or not isinstance(cylinder, (int, np.integer)) or cylinder not in available_cylinders
+                for cylinder in cylinders)):
+            raise ValueError(f"plot_cylinders must select available cylinder IDs {sorted(available_cylinders)!r}.")
+        selected = [name for name in selected if channels.get(name, (None, None))[1] in cylinders]
+    if not selected:
+        raise ValueError("The variable and cylinder filters select no common channels.")
+    return selected
+
+
+def plot_selection_suffix(
+    variable_names: Sequence[str],
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
+) -> str:
+    """Return a filename suffix identifying explicitly selected plot channels.
+
+    Parameters:
+        variable_names (Sequence[str]): Available channel names in data-column order.
+        plot_variables (Sequence[str] or None): Variable families or exact channel names. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to display. Default: None
+    """
+    if plot_variables is None and plot_cylinders is None:
+        return ''
+    selected = select_plot_variables(variable_names, plot_variables, plot_cylinders)
+    return '_variables=' + '-'.join(re.sub(r'[^A-Za-z0-9_-]', '', name) for name in selected)
+
 
 def create_subplots(
     rows: int,
@@ -170,6 +240,8 @@ def plot_data(
     ylim_mean_time_end: float | None = None,
 
     crop_to_xlim: bool = False,
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
 ) -> tuple[Figure, Axes | np.ndarray]:
     """Return a figure and axes for finite N-by-channel signals on recorded t*.
 
@@ -182,15 +254,20 @@ def plot_data(
     Parameters:
         time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
         data (array-like): Measured samples with one column per supplied variable name.
-        state_variable_names (Sequence[str]): Ordered names of the state columns to display.
+        state_variable_names (Sequence[str]): Ordered names identifying the supplied data columns before plot selection.
         parameter_values_dict (Mapping[str, float]): Parameter labels and values displayed with the figure.
         xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range. Default: None
         ylim_mean_time_start (float): First recorded t* included in y-limit statistics. Default: 0
         ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
         crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+        plot_variables (Sequence[str] or None): Variable families or exact channel names to display. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to display. Default: None
     """
     time, xlim, stats, visible = _time_windows(time, xlim, ylim_mean_time_start, ylim_mean_time_end, crop_to_xlim)
     data = _validate_plot_data(time, data, state_variable_names)
+    selected_names = select_plot_variables(state_variable_names, plot_variables, plot_cylinders)
+    data = _matching_columns(data, state_variable_names, selected_names)
+    state_variable_names = selected_names
     fig, axs = create_subplots(len(state_variable_names))
     try:
 
@@ -253,6 +330,8 @@ def plot_compare_prior_check(
     ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference', # 'reference', 'prediction', or 'both'; legacy 'true'/'pred' also work.
 
     crop_to_xlim: bool = False,
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
 ) -> tuple[Figure, Axes | np.ndarray]:
     """Align shared reference/prediction channels by name and return comparison axes.
 
@@ -274,6 +353,8 @@ def plot_compare_prior_check(
         ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
         ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Data used to calculate y limits: reference, prediction, or both; true and pred are aliases. Default: 'reference'
         crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+        plot_variables (Sequence[str] or None): Variable families or exact shared channel names to display. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to display. Default: None
     """
     time = np.asarray(time)
     if time.ndim != 1:
@@ -284,6 +365,9 @@ def plot_compare_prior_check(
 
     if len(state_variable_names) == 0:
         raise ValueError("No common state variable names found between true and predicted data.")
+
+    # Resolve filters on shared names before aligning differently ordered arrays.
+    state_variable_names = select_plot_variables(state_variable_names, plot_variables, plot_cylinders)
 
     # Align both arrays to the true-variable order before comparing channel values.
     data_true_to_compare = _matching_columns(data_true, true_state_variable_names, state_variable_names)
@@ -321,6 +405,8 @@ def plot_compare(
 
     ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference', # 'reference', 'prediction', or 'both'; legacy 'true'/'pred' also work.
     crop_to_xlim: bool = False,
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
 ) -> tuple[Figure, Axes | np.ndarray]:
     """Return comparison axes for finite aligned reference/prediction signals.
 
@@ -334,7 +420,7 @@ def plot_compare(
         time (array-like): Recorded fluid time t* aligned with the plotted sample rows.
         data_true (numpy.ndarray): Reference samples, with columns ordered by their reference names.
         data_pred (numpy.ndarray): Predicted samples, with columns ordered by their prediction names.
-        state_variable_names (Sequence[str]): Ordered names of the state columns to display.
+        state_variable_names (Sequence[str]): Ordered names identifying both supplied arrays before plot selection.
         parameter_values_dict (Mapping[str, float]): Parameter labels and values displayed with the figure.
         error_metrics_dict (Mapping[str, Mapping[str, float]] or None): Per-variable metrics included in comparison annotations. Default: None
         xlim (Sequence[float] or None): Displayed time limits in recorded t*, or None for the available range. Default: None
@@ -342,6 +428,8 @@ def plot_compare(
         ylim_mean_time_end (float or None): Last recorded t* included in y-limit statistics; None uses the available end. Default: None
         ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Data used to calculate y limits: reference, prediction, or both; true and pred are aliases. Default: 'reference'
         crop_to_xlim (bool): Whether to limit plotted samples to the visible time interval. Default: False
+        plot_variables (Sequence[str] or None): Variable families or exact channel names to display. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to display. Default: None
     """
     sources = {'true': 'reference', 'pred': 'prediction', 'reference': 'reference', 'prediction': 'prediction', 'both': 'both'}
     if ylim_source not in sources:
@@ -350,6 +438,10 @@ def plot_compare(
     time, xlim, stats, visible = _time_windows(time, xlim, ylim_mean_time_start, ylim_mean_time_end, crop_to_xlim)
     data_true = _validate_plot_data(time, data_true, state_variable_names)
     data_pred = _validate_plot_data(time, data_pred, state_variable_names)
+    selected_names = select_plot_variables(state_variable_names, plot_variables, plot_cylinders)
+    data_true = _matching_columns(data_true, state_variable_names, selected_names)
+    data_pred = _matching_columns(data_pred, state_variable_names, selected_names)
+    state_variable_names = selected_names
     ylim_data = data_true if ylim_source == 'reference' else data_pred
     fig, axs = create_subplots(len(state_variable_names))
     try:

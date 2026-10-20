@@ -18,6 +18,7 @@ from sindy_viv.case_bryan.constants import (
     TWO_TANDEM_CYLINDERS_CASE_NAME, TWO_TANDEM_CYLINDERS_RE, TWO_TANDEM_CYLINDERS_MSTAR,
 )
 from sindy_viv.case_bryan.input import load_data_single_cylinder, load_data_two_tandem_cylinders
+from sindy_viv.case_bryan.plot import select_plot_variables
 from sindy_viv.case_bryan.prepare_sindy.trajectory import append_parameter_columns
 from sindy_viv.case_bryan.prepare_sindy.case_layout import get_case_layout
 from sindy_viv.case_bryan.prepare_sindy.trajectory import prepare_trajectory
@@ -51,6 +52,8 @@ def evaluate_sindy(
     xlim: Sequence[float] | None = None,
     ylim_mean_time: Sequence[float | None] = (None, None),
     ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference',
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
     method: str | type = "RK45",
     rtol: float | np.ndarray = 1e-6,
     atol: float | np.ndarray = 1e-9,
@@ -110,6 +113,8 @@ def evaluate_sindy(
         xlim (Sequence[float] or None): Displayed time limits in recorded t*; None uses the available interval. Default: None
         ylim_mean_time (Sequence[float | None]): Recorded t* interval for y-limit statistics, with None for open endpoints. Default: (None, None)
         ylim_source (Literal['reference', 'prediction', 'both', 'true', 'pred']): Source of y-limit statistics: reference, prediction, or both; true and pred are aliases. Default: 'reference'
+        plot_variables (Sequence[str] or None): Variable families or exact output-channel names to plot; derivative evaluation uses derivative names. Metrics retain all channels. Default: None
+        plot_cylinders (Sequence[int] or None): Cylinder IDs to plot; metrics retain all cylinders. Default: None
 
         method (str or type): Integration solver passed to scipy.integrate.solve_ivp. Default: 'RK45'
         rtol (float or numpy.ndarray): Relative integration tolerance passed to scipy.integrate.solve_ivp. Default: 1e-06
@@ -268,6 +273,10 @@ def evaluate_sindy(
             else:
                 reference, variable_names_to_report = X, state_names
 
+            # Validate figure filters without removing states needed by prediction or integration.
+            if save_plot:
+                select_plot_variables(variable_names_to_report, plot_variables, plot_cylinders)
+
             control_count = len(input_names)
 
             del time, data, differentiator, trajectory
@@ -334,6 +343,7 @@ def evaluate_sindy(
                 evaluation_type, model_dir, report_dir, t, vr, reference, prediction,
                 variable_names_to_report, parameter_values, reference_name,
                 save_plot=save_plot, xlim=xlim, ylim_mean_time=ylim_mean_time, ylim_source=ylim_source,
+                plot_variables=plot_variables, plot_cylinders=plot_cylinders,
                 block_size=block_size, solver=solver, return_data=return_data,
             )
 
