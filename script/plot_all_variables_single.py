@@ -11,11 +11,13 @@ from sindy_viv.case_bryan.constants import (
     SINGLE_CYLINDER_STATE_VARIABLES,
 )
 from sindy_viv.case_bryan.input import load_data_single_cylinder
-from sindy_viv.case_bryan.plot import plot_data
+from sindy_viv.case_bryan.plot import plot_data, select_plot_variables, plot_selection_suffix
 
 def parse_args() -> argparse.Namespace:
     """Parse and validate this command line; --help describes available settings."""
     argument_parser = argparse.ArgumentParser(description="Plot all available variables of Bryan's LBM data of a single oscillating cylinder for all VR cases.")
+
+    # Physical case and dataset selection
     argument_parser.add_argument(
         "--vr_list",
         type=int,
@@ -23,12 +25,28 @@ def parse_args() -> argparse.Namespace:
         default=[3, 4, 5, 6, 7, 8],
         help="List of VR cases to plot."
     )
+
+    # Plot settings
+    argument_parser.add_argument(
+        '--plot_variables',
+        nargs='+',
+        default=None,
+        help="Variables to plot: h, hdot, hddot, CL, CD, or exact channel names; default: all."
+    )
+    argument_parser.add_argument(
+        '--plot_cylinders',
+        type=int,
+        nargs='+',
+        choices=(0,),
+        default=None,
+        help="Cylinder IDs to plot; the single-cylinder dataset contains only 0."
+    )
     argument_parser.add_argument(
         "--xlim",
         type=float,
         nargs=2,
         default=None,
-        help="X-axis limits for the plots."
+        help="X-axis limits for the plots, in t*."
     )
     argument_parser.add_argument(
         "--ylim_mean_time",
@@ -40,25 +58,24 @@ def parse_args() -> argparse.Namespace:
     return argument_parser.parse_args()
 
 def main() -> None:
-
-    # Load the arguments
-    """Run this experimental analysis/plot command."""
     args = parse_args()
+
     re = SINGLE_CYLINDER_RE
     mstar = SINGLE_CYLINDER_MSTAR
+    variable_names = select_plot_variables(SINGLE_CYLINDER_STATE_VARIABLES, args.plot_variables, args.plot_cylinders)
+    suffix = plot_selection_suffix(SINGLE_CYLINDER_STATE_VARIABLES, args.plot_variables, args.plot_cylinders)
 
     # Loop through each VR case and plot the data
     for vr in args.vr_list:
-
         # Load data for current VR
-        time, data = load_data_single_cylinder(re, mstar, vr)
+        time, data = load_data_single_cylinder(re, mstar, vr, variables=variable_names)
 
         # Return time to t* from tau
         time = time * vr
         fig, axs = plot_data(
             time=time,
             data=data,
-            state_variable_names=SINGLE_CYLINDER_STATE_VARIABLES,
+            state_variable_names=variable_names,
             parameter_values_dict={
                 "Re": re,
                 "m^*": mstar,
@@ -70,7 +87,6 @@ def main() -> None:
         )
 
         try:
-
             # Save the plot
             results_path = os.path.join(
                 "results",
@@ -79,7 +95,7 @@ def main() -> None:
                 f"Re = {re}",
                 f"Mstar = {mstar}",
                 f"VR = {vr}",
-                f"plot_{args.xlim[0]}_{args.xlim[1]}.png" if args.xlim is not None else f"plot_full_range.png"
+                f"plot_{args.xlim[0]}_{args.xlim[1]}{suffix}.png" if args.xlim is not None else f"plot_full_range{suffix}.png"
             )
 
             # Create the results directory if it doesn't exist
@@ -88,7 +104,6 @@ def main() -> None:
             # Save the figure
             fig.savefig(results_path, dpi=300)
         finally:
-
             # Release line buffers even if saving a batch figure fails.
             plt.close(fig)
 

@@ -10,6 +10,8 @@ from sindy_viv.case_bryan.compute_sindy.functions import compute_sindy
 def parse_args() -> argparse.Namespace:
     """Parse and validate this command line; --help describes available settings."""
     argument_parser = argparse.ArgumentParser(description="Perform SINDy on Bryan's LBM data of two tandem oscillating cylinders for all VR and L/D cases, individually.")
+
+    # Physical case and dataset selection
     argument_parser.add_argument(
         "--dynamics_case",
         type=int,
@@ -17,6 +19,22 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Dynamics case to perform SINDy on."
     )
+    argument_parser.add_argument(
+        "--vr_list",
+        type=int,
+        nargs='+',
+        default=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+        help="List of VR cases to perform SINDy on."
+    )
+    argument_parser.add_argument(
+        "--lpd_list",
+        type=float,
+        nargs='+',
+        default=[1.5, 2.0, 3.0, 3.5, 4.0],
+        help="List of L/D cases to perform SINDy on."
+    )
+
+    # SINDy fitting configuration
     argument_parser.add_argument(
         "--differentiator_case",
         type=str,
@@ -36,26 +54,17 @@ def parse_args() -> argparse.Namespace:
         help="Optimizer case to perform SINDy on."
     )
     argument_parser.add_argument(
-        "--vr_list",
-        type=int,
-        nargs='+',
-        default=[5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
-        help="List of VR cases to perform SINDy on."
+        "--fit_window_case",
+        default=None,
+        help="JSON fitting windows keyed by VR (single) or LpD/VR (tandem); defaults to the matching overall.json."
     )
-    argument_parser.add_argument(
-        "--lpd_list",
-        type=float,
-        nargs='+',
-        default=[1.5, 2.0, 3.0, 3.5, 4.0],
-        help="List of L/D cases to perform SINDy on."
-    )
+
+    # Output settings
     argument_parser.add_argument(
         "--save_pkl",
         action="store_true",
         help="Flag to save the SINDy model as a pickle file."
     )
-
-    argument_parser.add_argument("--fit_window_case", default=None, help="JSON fitting windows keyed by VR (single) or LpD/VR (tandem); defaults to the matching overall.json.")
     return argument_parser.parse_args()
 
 
