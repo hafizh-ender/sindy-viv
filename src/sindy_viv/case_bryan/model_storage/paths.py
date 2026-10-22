@@ -51,7 +51,7 @@ def model_base_directory(
     Parameters:
         results_root (str or PathLike[str]): Root directory for fitted models and evaluation artifacts.
         case_name (str): Dataset label used in saved-model paths.
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         differentiator_name (str): Differentiator label used in model paths.
         fit_mode (str): Fit-family label used in saved-model paths.
         cylinder_type (str): Cylinder configuration: single or two_tandem.

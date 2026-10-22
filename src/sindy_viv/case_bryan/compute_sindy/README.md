@@ -18,7 +18,7 @@ in the repository's existing `script/` directory.
 
 ## Standard SINDy
 
-All six workflows support `dynamics_case=1` through `4`:
+All six workflows support `dynamics_case=1` through `5`:
 
 | Case | States per cylinder | Measured controls per cylinder |
 | --- | --- | --- |
@@ -26,15 +26,24 @@ All six workflows support `dynamics_case=1` through `4`:
 | 2 | h, hdot, CL, CLdot | None |
 | 3 | h, hdot | CL |
 | 4 | CL, CLdot | h, hdot, hddot |
+| 5 | CL, CLdot | h, hdot |
 
-For cases 3 and 4, `state_feature_library_case` acts on states and measured
+For cases 3, 4 and 5, `state_feature_library_case` acts on states and measured
 controls. In parametric runs, `input_feature_library_case` still acts only on
 VR, L/D, or `[L/D, V_R]`; controls do not become parameters. The fitted model receives
 controls before constant parameters in its `u` arrays.
 
 All differentiation uses the loader's tau without dividing
-by VR again. Cases 2 and 4 differentiate lift rates with the supplied
+by VR again. Cases 2, 4 and 5 differentiate lift rates with the supplied
 differentiator; case 4 loads the recorded acceleration channel as a control.
+Case 5 omits that channel entirely and needs only measured h, hdot and CL.
+
+For Case 5, `case5_single_lift3_motion1.json` combines cubic lift terms with
+linear motion terms. `case5_single_lift3_motion1_tensored.json` also includes
+lift-motion products. Both live under `configs/feature_library/` and use
+single-cylinder column groups `[0, 1]` (CL, CLdot) and `[2, 3]` (h, hdot).
+Use `--dynamics_case 5`; Case 4 configs with acceleration-specific indices
+must be replaced or adjusted for this shorter response layout.
 
 ```python
 from sindy_viv.case_bryan.compute_sindy import compute_sindy
@@ -240,7 +249,7 @@ New CLI entry point:
 python script/perform_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json
 ```
 
-Cases 1 through 4 support this mode, including measured controls,
+Cases 1 through 5 support this mode, including measured controls,
 reciprocal/tensored parameter libraries, and physical constraints.
 WeakSINDy remains a placeholder; its existing CLI inputs are unchanged.
 
@@ -341,7 +350,7 @@ Choose dtype=np.float32 explicitly for float32 states, controls, derivatives
 and parameter columns. Time always remains float64. Differentiator computation
 precision follows its own configuration; preparation controls returned storage.
 Named internal PreparedTrajectory records preserve the existing public tuple
-wrappers. The physical Cases 1-4 and ConstrainedSR3 equations remain unchanged.
+wrappers. The physical Cases 1-4 remain unchanged; Case 5 retains only the lift-rate identity in ConstrainedSR3.
 
 Library metadata setup samples one row only for exact known shape-only
 polynomial, Fourier, custom and selected-polynomial implementations (including

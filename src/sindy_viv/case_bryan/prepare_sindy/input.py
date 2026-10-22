@@ -1,6 +1,6 @@
 r"""Prepare SINDy states, time-varying inputs, and constant parameters.
 
-Individual cases 1 and 2 return (t, X, X_dot, state_names). Cases 3 and 4
+Individual cases 1 and 2 return (t, X, X_dot, state_names). Cases 3, 4 and 5
 also return (U, input_names) because they have time-varying inputs.
 All case-specific parametric functions return
 (t, X, X_dot, state_names, U, input_names) for one trajectory; dictionary
@@ -19,6 +19,9 @@ Case 3:
 
 Case 4:
     [\dot{CL}, \ddot{CL}] = f(CL, \dot{CL}, [h, \dot{h}, \ddot{h}, L/D, V_R])
+
+Case 5:
+    [\dot{CL}, \ddot{CL}] = f(CL, \dot{CL}, [h, \dot{h}, L/D, V_R])
 
 Proposal only (not implemented): change the derivative scheme. Instead of using \dot{} = d()/d\tau, \tau = f_N t = U t / (VR D) = t* / VR,
 we would use \tilde{} = d()/d\theta, \theta = 2 \pi f_N t = 2 \pi U t / (VR D) = 2 \pi t* / VR. This is equivalent to scaling the time axis by 2 \pi.
@@ -62,7 +65,7 @@ def _prepare_input(
 
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
@@ -76,20 +79,22 @@ def _select_case(
     case_2: Callable[..., Any],
     case_3: Callable[..., Any],
     case_4: Callable[..., Any],
+    case_5: Callable[..., Any],
 ) -> Callable[..., Any]:
     """Helper function to select the appropriate case function based on the provided case number.
 
     All supplied alternatives must be callable; invalid case numbers raise ValueError.
 
     Parameters:
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         case_1 (Callable[..., Any]): Preparation callable for dynamics Case 1.
         case_2 (Callable[..., Any]): Preparation callable for dynamics Case 2.
         case_3 (Callable[..., Any]): Preparation callable for dynamics Case 3.
         case_4 (Callable[..., Any]): Preparation callable for dynamics Case 4.
+        case_5 (Callable[..., Any]): Preparation callable for dynamics Case 5.
     """
     if isinstance(case, (bool, np.bool_)):
-        raise ValueError("Invalid case value. Must be 1, 2, 3, or 4.")
+        raise ValueError("Invalid case value. Must be 1, 2, 3, 4, or 5.")
     match case:
         case 1:
             return case_1
@@ -99,8 +104,10 @@ def _select_case(
             return case_3
         case 4:
             return case_4
+        case 5:
+            return case_5
         case _:
-            raise ValueError(f"Invalid case value. Must be 1, 2, 3, or 4. Got {case}.")
+            raise ValueError(f"Invalid case value. Must be 1, 2, 3, 4, or 5. Got {case}.")
 
 def _attach_constant_parameters(
     prepared_output: PreparedInputs,
@@ -351,6 +358,35 @@ def prepare_input_single_case_4(
     )
 
 
+def prepare_input_single_case_5(
+    time: np.ndarray,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: list,
+    differentiator: Differentiator | None,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare Case 5 lift states/derivatives with measured h and hdot controls.
+
+    dtype controls floating state/control storage (default float64). Channel
+    order follows get_case_layout. Returns (time, states, derivatives, state_names, inputs, input_names).
+    The differentiator receives the full tau array, without another VR scaling.
+
+    Parameters:
+        time (numpy.ndarray): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (list): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _prepare_input(
+        time, full_state_variable_data, full_state_variable_names, differentiator,
+        case=5, cylinder_type="single",
+        dtype=dtype,
+    )
+
+
 def prepare_input_single_case_1_parametric_vr(
     time: np.ndarray,
     full_state_variable_data: np.ndarray,
@@ -485,6 +521,40 @@ def prepare_input_single_case_4_parametric_vr(
     )
 
 
+def prepare_input_single_case_5_parametric_vr(
+    time: np.ndarray,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: list[str],
+    differentiator: Differentiator | None,
+    vr: float,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare one Case 5 trajectory with measured controls followed by constant parameters.
+
+    Time is already tau; dtype sets states, derivatives and inputs (default
+    float64). Returns (time, states, derivatives, state_names, inputs, input_names).
+    Parameter columns are V_R, L/D, or L/D then V_R as named by the function.
+
+    Parameters:
+        time (numpy.ndarray): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        vr (float): Reduced velocity for this trajectory or fixed-VR model.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _attach_constant_parameters(
+        prepare_input_single_case_5(
+            time, full_state_variable_data, full_state_variable_names, differentiator,
+            dtype=dtype,
+        ),
+        (vr,), ['V_R'],
+    )
+
+
 def prepare_input_single_parametric_vr(
     times: dict[float, np.ndarray],
     full_state_variables: dict[float, np.ndarray],
@@ -509,7 +579,7 @@ def prepare_input_single_parametric_vr(
         full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
         input_variables (list[float]): Selected VR keys or (LpD, VR) pairs, preserving the requested trajectory order.
         differentiators (object or list[object]): One derivative callable for all selections, or a list aligned with input_variables.
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -519,6 +589,7 @@ def prepare_input_single_parametric_vr(
         prepare_input_single_case_2_parametric_vr,
         prepare_input_single_case_3_parametric_vr,
         prepare_input_single_case_4_parametric_vr,
+        prepare_input_single_case_5_parametric_vr,
     )
     return _prepare_parametric_vr_inputs(
         times, full_state_variables, full_state_variable_names,
@@ -538,7 +609,7 @@ def prepare_input_single_individual(
     """Prepare one selected dynamics case on an existing float64 tau axis.
 
     dtype controls state/derivative/control storage (default float64). Cases 1/2
-    return (time, states, derivatives, names); Cases 3/4 also return inputs and
+    return (time, states, derivatives, names); Cases 3/4/5 also return inputs and
     input_names. Required channels follow get_case_layout and no time rescaling
     is applied. Invalid dimensions, dtype, case or missing channels raise ValueError.
 
@@ -548,7 +619,7 @@ def prepare_input_single_individual(
         full_state_variable_names (list): Names identifying the measured trajectory columns.
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -669,6 +740,35 @@ def prepare_input_two_tandem_case_4(
     return _prepare_input(
         time, full_state_variable_data, full_state_variable_names, differentiator,
         case=4, cylinder_type="two_tandem",
+        dtype=dtype,
+    )
+
+
+def prepare_input_two_tandem_case_5(
+    time: np.ndarray,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: list,
+    differentiator: Differentiator | None,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare Case 5 lift states/derivatives with measured h and hdot controls.
+
+    dtype controls floating state/control storage (default float64). Channel
+    order follows get_case_layout. Returns (time, states, derivatives, state_names, inputs, input_names).
+    The differentiator receives the full tau array, without another VR scaling.
+
+    Parameters:
+        time (numpy.ndarray): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (list): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _prepare_input(
+        time, full_state_variable_data, full_state_variable_names, differentiator,
+        case=5, cylinder_type="two_tandem",
         dtype=dtype,
     )
 
@@ -800,6 +900,40 @@ def prepare_input_two_tandem_case_4_parametric_vr(
     """
     return _attach_constant_parameters(
         prepare_input_two_tandem_case_4(
+            time, full_state_variable_data, full_state_variable_names, differentiator,
+            dtype=dtype,
+        ),
+        (vr,), ['V_R'],
+    )
+
+
+def prepare_input_two_tandem_case_5_parametric_vr(
+    time: np.ndarray,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: list[str],
+    differentiator: Differentiator | None,
+    vr: float,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare one Case 5 trajectory with measured controls followed by constant parameters.
+
+    Time is already tau; dtype sets states, derivatives and inputs (default
+    float64). Returns (time, states, derivatives, state_names, inputs, input_names).
+    Parameter columns are V_R, L/D, or L/D then V_R as named by the function.
+
+    Parameters:
+        time (numpy.ndarray): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        vr (float): Reduced velocity for this trajectory or fixed-VR model.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _attach_constant_parameters(
+        prepare_input_two_tandem_case_5(
             time, full_state_variable_data, full_state_variable_names, differentiator,
             dtype=dtype,
         ),
@@ -950,6 +1084,42 @@ def prepare_input_two_tandem_case_4_parametric_vr_lpd(
     )
 
 
+def prepare_input_two_tandem_case_5_parametric_vr_lpd(
+    time: np.ndarray,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: list[str],
+    differentiator: Differentiator | None,
+    vr: float,
+    lpd: float,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare one Case 5 trajectory with measured controls followed by constant parameters.
+
+    Time is already tau; dtype sets states, derivatives and inputs (default
+    float64). Returns (time, states, derivatives, state_names, inputs, input_names).
+    Parameter columns are V_R, L/D, or L/D then V_R as named by the function.
+
+    Parameters:
+        time (numpy.ndarray): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        vr (float): Reduced velocity for this trajectory or fixed-VR model.
+        lpd (float): Cylinder spacing L/D; None denotes the single-cylinder configuration.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _attach_constant_parameters(
+        prepare_input_two_tandem_case_5(
+            time, full_state_variable_data, full_state_variable_names, differentiator,
+            dtype=dtype,
+        ),
+        (lpd, vr), ['L/D', 'V_R'],
+    )
+
+
 def prepare_input_two_tandem_parametric_vr(
     times: dict[float, np.ndarray],
     full_state_variables: dict[float, np.ndarray],
@@ -974,7 +1144,7 @@ def prepare_input_two_tandem_parametric_vr(
         full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
         input_variables (list[float]): Selected VR keys or (LpD, VR) pairs, preserving the requested trajectory order.
         differentiators (object or list[object]): One derivative callable for all selections, or a list aligned with input_variables.
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -984,6 +1154,7 @@ def prepare_input_two_tandem_parametric_vr(
         prepare_input_two_tandem_case_2_parametric_vr,
         prepare_input_two_tandem_case_3_parametric_vr,
         prepare_input_two_tandem_case_4_parametric_vr,
+        prepare_input_two_tandem_case_5_parametric_vr,
     )
     return _prepare_parametric_vr_inputs(
         times, full_state_variables, full_state_variable_names,
@@ -1015,7 +1186,7 @@ def prepare_input_two_tandem_parametric_vr_lpd(
         full_state_variable_names (list[str]): Names identifying the measured trajectory columns.
         input_variables (list[tuple[float, float]]): Selected VR keys or (LpD, VR) pairs, preserving the requested trajectory order.
         differentiators (object or list[object]): One derivative callable for all selections, or a list aligned with input_variables.
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -1025,6 +1196,7 @@ def prepare_input_two_tandem_parametric_vr_lpd(
         prepare_input_two_tandem_case_2_parametric_vr_lpd,
         prepare_input_two_tandem_case_3_parametric_vr_lpd,
         prepare_input_two_tandem_case_4_parametric_vr_lpd,
+        prepare_input_two_tandem_case_5_parametric_vr_lpd,
     )
     return _prepare_parametric_vr_lpd_inputs(
         times, full_state_variables, full_state_variable_names,
@@ -1044,7 +1216,7 @@ def prepare_input_two_tandem_individual(
     """Prepare one selected dynamics case on an existing float64 tau axis.
 
     dtype controls state/derivative/control storage (default float64). Cases 1/2
-    return (time, states, derivatives, names); Cases 3/4 also return inputs and
+    return (time, states, derivatives, names); Cases 3/4/5 also return inputs and
     input_names. Required channels follow get_case_layout and no time rescaling
     is applied. Invalid dimensions, dtype, case or missing channels raise ValueError.
 
@@ -1054,7 +1226,7 @@ def prepare_input_two_tandem_individual(
         full_state_variable_names (list): Names identifying the measured trajectory columns.
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -1073,7 +1245,7 @@ def iter_prepared_trajectories(
     tandem: bool = False,
     dtype: DTypeLike = np.float64,
 ) -> Iterator[PreparedInputs]:
-    """Yield prepared trajectories, including U and input names for cases 3 and 4.
+    """Yield prepared trajectories, including U and input names for cases 3, 4 and 5.
 
     ``trajectories`` yields (time, data) pairs, for example from a generator
     loading one case at a time. Consume results incrementally to bound memory;
@@ -1085,7 +1257,7 @@ def iter_prepared_trajectories(
         full_state_variable_names (Sequence[str]): Names identifying the measured trajectory columns.
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
         tandem (bool): Whether the iterable contains tandem-cylinder trajectories. Default: False
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -1118,7 +1290,7 @@ def prepare_input_two_tandem_parametric_lpd(
         full_state_variable_names (Sequence[str]): Names identifying the measured trajectory columns.
         input_variables (Sequence[Any]): Selected L/D keys, preserving the requested trajectory order.
         differentiators (Differentiator or list[Differentiator]): One derivative callable for all selections, or a list aligned with input_variables.
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4. Default: 1
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5. Default: 1
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
     """
@@ -1137,6 +1309,7 @@ def prepare_input_two_tandem_parametric_lpd(
         prepare_input_two_tandem_case_2_parametric_lpd,
         prepare_input_two_tandem_case_3_parametric_lpd,
         prepare_input_two_tandem_case_4_parametric_lpd,
+        prepare_input_two_tandem_case_5_parametric_lpd,
     )
     t_s, X_s, X_dot_s, U_s = [], [], [], []
     for lpd, differentiator in zip(input_variables, differentiators):
@@ -1281,6 +1454,40 @@ def prepare_input_two_tandem_case_4_parametric_lpd(
     """
     return _attach_constant_parameters(
         prepare_input_two_tandem_case_4(
+            time, full_state_variable_data, full_state_variable_names, differentiator,
+            dtype=dtype,
+        ),
+        (lpd,), ['L/D'],
+    )
+
+
+def prepare_input_two_tandem_case_5_parametric_lpd(
+    time: ArrayLike,
+    full_state_variable_data: np.ndarray,
+    full_state_variable_names: Sequence[str],
+    differentiator: Differentiator | None,
+    lpd: float,
+    *,
+    dtype: DTypeLike = np.float64,
+) -> ControlledInputs:
+    """Prepare one Case 5 trajectory with measured controls followed by constant parameters.
+
+    Time is already tau; dtype sets states, derivatives and inputs (default
+    float64). Returns (time, states, derivatives, state_names, inputs, input_names).
+    Parameter columns are V_R, L/D, or L/D then V_R as named by the function.
+
+    Parameters:
+        time (array-like): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
+        full_state_variable_data (numpy.ndarray): Measured trajectory columns in full_state_variable_names order.
+        full_state_variable_names (Sequence[str]): Names identifying the measured trajectory columns.
+        differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
+
+        lpd (float): Cylinder spacing L/D; None denotes the single-cylinder configuration.
+
+        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
+    """
+    return _attach_constant_parameters(
+        prepare_input_two_tandem_case_5(
             time, full_state_variable_data, full_state_variable_names, differentiator,
             dtype=dtype,
         ),

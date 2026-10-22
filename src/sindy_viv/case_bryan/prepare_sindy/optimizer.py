@@ -29,7 +29,7 @@ def prepare_constrained_sr3(
 
     Enforce h' = hdot and hdot' = -4*pi**2*h + 2*VR**2*CL/(pi*mstar)
     for each cylinder.
-    Cases 2 and 4 enforce CL' = CLdot; case 4 has no structural state equations.
+    Cases 2, 4 and 5 enforce CL' = CLdot; cases 4/5 have no structural state equations.
     Case 3 uses measured lift controls in the structural forcing term.
     Other equations remain free.
     Parametric libraries need linear state terms and a parameter bias.
@@ -44,7 +44,7 @@ def prepare_constrained_sr3(
         feature_names (Sequence[str] or None): Expanded feature labels in the fitted library column order; a nonempty sequence is required.
         state_names (Sequence[str]): Ordered names of the fitted state columns.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
 
         mstar (float): Positive finite physical mass ratio used in structural constraints.
@@ -64,7 +64,7 @@ def prepare_constrained_sr3(
     if parameter_names not in ([], ['V_R'], ['L/D'], ['L/D', 'V_R']):
         raise ValueError("parameter_names must be [], ['V_R'], ['L/D'], or ['L/D', 'V_R'].")
 
-    if case != 4 and 'V_R' not in parameter_names and (vr is None or not np.isscalar(vr) or not np.isfinite(vr) or vr <= 0):
+    if case not in (4, 5) and 'V_R' not in parameter_names and (vr is None or not np.isscalar(vr) or not np.isfinite(vr) or vr <= 0):
         raise ValueError("Individual constraints require a finite positive vr.")
 
     feature_names, state_names = list(feature_names), list(state_names)
@@ -98,7 +98,7 @@ def prepare_constrained_sr3(
     lift_scale = 2 / (np.pi * mstar)
 
     # L/D-only fits retain a fixed VR, so its square belongs in the forcing coefficient.
-    if case != 4 and 'V_R' not in parameter_names:
+    if case not in (4, 5) and 'V_R' not in parameter_names:
         lift_scale *= vr**2
 
     for cylinder_id in cylinder_ids:
@@ -108,16 +108,16 @@ def prepare_constrained_sr3(
         velocity = rf'\dot{{h}}_{cylinder_id}'
         lift = rf'C_{{L{cylinder_id}}}'
 
-        if case != 4 and (lift not in list(state_names) + list(input_names) or velocity not in state_names):
+        if case not in (4, 5) and (lift not in list(state_names) + list(input_names) or velocity not in state_names):
             raise ValueError(f"Physical constraints require state {velocity!r} and state/input {lift!r}.")
 
         lift_feature = f'V_R^2 {lift}' if 'V_R' in parameter_names else prefix + lift
-        equations = {} if case == 4 else {
+        equations = {} if case in (4, 5) else {
             displacement: {prefix + velocity: 1.0},
             velocity: {prefix + displacement: -4 * np.pi**2, lift_feature: lift_scale},
         }
 
-        if case in (2, 4):
+        if case in (2, 4, 5):
             lift_rate = rf'\dot{{C}}_{{L{cylinder_id}}}'
 
             if lift_rate not in state_names:
@@ -299,7 +299,7 @@ def prepare_optimizer(
         state_data (numpy.ndarray or Sequence[numpy.ndarray]): Prepared state samples used to establish feature metadata.
         state_names (Sequence[str]): Ordered names of the fitted state columns.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
 
         mstar (float): Positive finite physical mass ratio used in structural constraints.

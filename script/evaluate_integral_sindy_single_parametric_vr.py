@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4),
+        choices=(1, 2, 3, 4, 5),
         required=True,
         help="Physical state case."
     )
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--evaluation_differentiator_case',
         default=None,
-        help="Optional reference differentiator for lift-rate states in cases 2 and 4."
+        help="Optional reference differentiator for lift-rate states in cases 2, 4 and 5."
     )
 
     # Numerical integration settings

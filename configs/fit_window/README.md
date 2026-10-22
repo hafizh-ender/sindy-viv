@@ -59,7 +59,7 @@ Pass the same config to standard computation and evaluation:
 
 The config contains no dynamics-case or parameterization setting. For example,
 the window at LpD=2, VR=8 is identical when used in individual, VR-only,
-L/D-only, or joint fitting, and in dynamics cases 1 through 4.
+L/D-only, or joint fitting, and in dynamics cases 1 through 5.
 
 `training.json` saves the config name, source path, full nested config snapshot,
 and each fitted trajectory's resolved limits, actual endpoints, and sample

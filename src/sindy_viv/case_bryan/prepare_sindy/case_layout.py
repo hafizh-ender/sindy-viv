@@ -1,4 +1,4 @@
-"""Canonical state and measured-control names for Bryan dynamics Cases 1-4."""
+"""Canonical state and measured-control names for Bryan dynamics Cases 1-5."""
 
 from __future__ import annotations
 
@@ -31,16 +31,17 @@ class CaseLayout:
 
 
 def get_case_layout(case: DynamicsCase, cylinder_type: CylinderType) -> CaseLayout:
-    """Describe Cases 1-4 without changing channels between fitting and evaluation.
+    """Describe Cases 1-5 without changing channels between fitting and evaluation.
 
     Case 1 models h, hdot and CL.
     Case 2 also models CLdot.
     Case 3 models h and hdot with prescribed CL.
     Case 4 models CL and CLdot with prescribed h, hdot and hddot.
+    Case 5 models CL and CLdot with prescribed h and hdot only.
     All rates use tau=t*/VR; this function never rescales data.
 
     Parameters:
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
     """
     if cylinder_type == "single":
@@ -54,7 +55,7 @@ def get_case_layout(case: DynamicsCase, cylinder_type: CylinderType) -> CaseLayo
     rates = tuple(rf'\dot{{C}}_{{L{i}}}' for i in cylinders)
 
     if isinstance(case, (bool, np.bool_)):
-        raise ValueError("dynamics_case must be 1, 2, 3, or 4.")
+        raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
     match case:
         case 1 | 2:
             base = tuple(name for i in cylinders for name in (f'h_{i}', rf'\dot{{h}}_{i}', f'C_{{L{i}}}'))
@@ -66,7 +67,12 @@ def get_case_layout(case: DynamicsCase, cylinder_type: CylinderType) -> CaseLayo
         case 4:
             base = lift
             controls = tuple(name for i in cylinders for name in (f'h_{i}', rf'\dot{{h}}_{i}', rf'\ddot{{h}}_{i}'))
+        case 5:
+
+            # Keep the lift dynamics of Case 4 while requiring no recorded acceleration channel.
+            base = lift
+            controls = tuple(name for i in cylinders for name in (f'h_{i}', rf'\dot{{h}}_{i}'))
         case _:
-            raise ValueError("dynamics_case must be 1, 2, 3, or 4.")
+            raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
 
     return CaseLayout(cylinders, base, base + rates, controls, lift, rates)

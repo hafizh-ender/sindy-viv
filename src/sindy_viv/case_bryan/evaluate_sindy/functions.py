@@ -84,7 +84,7 @@ def evaluate_sindy(
     states evolve.
 
     Parameters:
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
 
         optimizer_case (str or PathLike[str]): Training optimizer configuration path identifying the saved model.
 
@@ -217,7 +217,7 @@ def evaluate_sindy(
 
         differentiator_config = load_config(reference_case)
         reference_name = Path(reference_case).stem
-    elif dynamics_case in (2, 4):
+    elif dynamics_case in (2, 4, 5):
         if reference_case is None:
             raise ValueError(f"Case {dynamics_case} integral evaluation requires a reference differentiator.")
 

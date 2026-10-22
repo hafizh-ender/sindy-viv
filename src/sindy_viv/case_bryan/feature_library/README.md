@@ -1,6 +1,7 @@
 # Restricted wake-oscillator response libraries
 
-`WakeOscillatorCase2Library` and `WakeOscillatorCase4Library` are configuration factories. Each returns an
+`WakeOscillatorCase2Library`, `WakeOscillatorCase4Library` and
+`WakeOscillatorCase5Library` are configuration factories. Each returns a
 SelectedPolynomialLibrary, a PySINDy feature library with explicit ordered
 exponent vectors. Each selected term is evaluated once using its output column
 as working storage. The implementation supports arbitrary channel counts and
@@ -8,7 +9,7 @@ does not require lambdas, callable arity introspection, or closure serialization
 The factory names and JSON settings remain unchanged. Old CustomLibrary model
 pickles retain their callable lookup through `compatibility/wake_callables.py` and the previous pickle import aliases.
 
-Use these factories as `state_feature_library_case`. In Cases 3/4 the response
+Use these factories as `state_feature_library_case`. In Cases 3/4/5 the response
 library acts on states **and measured controls**. `input_feature_library_case`
 is the constant-parameter library used only for VR, L/D, or both. Therefore
 Case 4 acceleration coupling is supported even though acceleration is a control.
@@ -25,11 +26,17 @@ Tandem order is:
 CL0, CL1, CLdot0, CLdot1, h0, hdot0, hddot0, h1, hdot1, hddot1
 ```
 
-These match `prepare_sindy/input.py`. Each factory defines its own Case 2 or 4
+These match `prepare_sindy/input.py`. Each factory defines its own Case 2, 4 or 5
 layout; all term indices are resolved from those names. Other variable
-orders are rejected when feature names are requested. Case 2 does not supply
+orders are rejected when feature names are requested. Cases 2 and 5 do not supply
 acceleration as a state or control, so requesting acceleration coupling there
 raises an error. Cases 1/3 have no second-order wake equation and have no factory.
+
+Case 5 uses the same lift states as Case 4 but omits acceleration. Its
+single-cylinder response order is `CL0, CLdot0, h0, hdot0`; tandem order is
+`CL0, CL1, CLdot0, CLdot1, h0, hdot0, h1, hdot1`.
+`WakeOscillatorCase5Library` defaults to linear restoring, van der Pol
+damping, and displacement/velocity coupling. Acceleration coupling is rejected.
 
 Options common to all factories:
 

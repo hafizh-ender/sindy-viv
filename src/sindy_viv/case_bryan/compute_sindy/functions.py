@@ -62,7 +62,7 @@ def compute_sindy(
     """Fit individual, VR-only, L/D-only, or joint L/D-VR SINDy models.
 
     Parameters:
-        dynamics_case (int): Dynamics case 1 through 4.
+        dynamics_case (int): Dynamics case 1 through 5.
 
         differentiator_case (str, PathLike[str], or None): Path to the differentiator configuration file.
         optimizer_case (str or PathLike[str]): Path to the optimizer configuration file.
@@ -104,8 +104,8 @@ def compute_sindy(
     """
 
     # Validate the dynamics case
-    if dynamics_case not in (1, 2, 3, 4):
-        raise ValueError("dynamics_case must be 1, 2, 3, or 4.")
+    if dynamics_case not in (1, 2, 3, 4, 5):
+        raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
 
     if cylinder_type == "single":
         case_name = SINGLE_CYLINDER_CASE_NAME
@@ -338,7 +338,7 @@ def compute_weak_sindy(
     Retained tweak0/tweakf denote future integration bounds in recorded t*.
 
     Parameters:
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
 
         optimizer_case (str or PathLike[str]): Optimizer configuration path.
 

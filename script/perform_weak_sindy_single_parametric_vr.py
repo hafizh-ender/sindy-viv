@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
         "--differentiator_case",
         type=str,
         required=False,
-        help="Reserved differentiator config for lift-rate states in cases 2 and 4."
+        help="Reserved differentiator config for lift-rate states in cases 2, 4 and 5."
     )
     argument_parser.add_argument(
         "--state_feature_library_case",

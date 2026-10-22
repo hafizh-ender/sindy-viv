@@ -13,7 +13,7 @@
 | `two_tandem` | `lpd` | One model across L/D at each VR | `(lpd, vr)` |
 | `two_tandem` | `vr_lpd` | One model across L/D and VR | `(lpd, vr)` |
 
-The shared function supports physical cases 1 through 4 and standard or weakly fitted
+The shared function supports physical cases 1 through 5 and standard or weakly fitted
 models. Validation,
 coefficient alignment, numerical prediction, integration, and reporting helpers
 are in `model_evaluation.py`.
@@ -157,7 +157,7 @@ differentiator is reused. Cases 2 and 4 need a reference differentiator for both
 evaluation methods.
 
 All four dynamics cases are supported in all six workflows. Cases 3 and 4
-evaluate forced systems: lift (case 3) or motion (case 4) comes from measured
+evaluate forced systems: lift (case 3) or motion (cases 4/5) comes from measured
 control channels, while the model states evolve independently from their
 initial values. Integral evaluation interpolates those controls linearly in
 tau at solver stages. Derivative evaluation uses controls at the selected

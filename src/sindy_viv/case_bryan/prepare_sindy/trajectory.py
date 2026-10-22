@@ -106,7 +106,7 @@ def prepare_trajectory(
     dtype (float32 or float64, default float64) controls state, derivative and
     control storage, including integer measurements. The differentiator must
     return first derivatives in tau with the same shape as its input.
-    with_derivatives=False computes only lift rates needed for Cases 2/4 and
+    with_derivatives=False computes only lift rates needed for Cases 2/4/5 and
     omits regression targets. Differentiate full trajectories before cropping.
     Invalid names, dimensions or dtypes raise ValueError.
 
@@ -117,7 +117,7 @@ def prepare_trajectory(
 
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, or 4.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
