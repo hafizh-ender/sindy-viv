@@ -1,6 +1,7 @@
 # Bryan-case SINDy computations
 
-`functions.py` exposes `compute_sindy` and the `compute_weak_sindy` placeholder.
+`functions.py` implements `compute_sindy`; `weak_functions.py` implements
+`compute_weak_sindy`. Both are exported by this package.
 The standard function selects loading, preparation, fitting, and saving with
 explicit `if`/`elif` branches for `cylinder_type` and `parameterization`.
 
@@ -199,20 +200,80 @@ Selecting other optimizers retains their existing configuration behavior. PySIND
 `cvxpy` extra is included in project dependencies: run `uv sync` when updating
 an existing installation.
 
-## WeakSINDy placeholders
+## WeakSINDy
 
-The previous WeakSINDy computation implementation has been removed.
-`compute_weak_sindy` accepts the same cylinder and parameterization selectors,
-along with the existing weak integration inputs. It and
-`sindy_viv.sindy.functions.perform_weak_sindy` raise
-`NotImplementedError("WeakSINDy is not implemented.")` immediately. They do not
-load data, fit models, or write results. The weak-library helper module has
-been removed.
+Import `compute_weak_sindy` from `sindy_viv.case_bryan.compute_sindy` or
+`sindy_viv.case_bryan.compute_sindy.weak_functions`. Its historical import from
+`compute_sindy.functions` remains available.
 
-The five `script/perform_weak_sindy_*.py` entry points retain their other CLI
-arguments and defaults, including `--tweak0`, `--tweakf`, `--K`, `--H_xt`, `--p`,
-and `--random_state`. Their `--help` output remains available; running a
-computation reaches its placeholder.
+Weak fits combine two distinct configurations:
+
+- `state_feature_library_case` selects the ordinary pointwise response basis
+  from `configs/feature_library`; parametric fits also supply
+  `input_feature_library_case` for the parameter basis.
+- `weak_feature_library_case` selects PySINDy `WeakPDELibrary` integration
+  settings from `configs/weak_feature_library`. Omitting it loads `default.json`.
+  The CLI reads `K`, `H_xt` and `p` exclusively from this JSON. Python API
+  callers can still override these settings with keyword arguments.
+
+The complete response/parameter products are integrated together. Each trajectory
+uses its own temporal grid and `K` windows, so trajectories with different sample
+counts and time axes are supported. A temporal adapter uses PySINDy's analytic
+piecewise-linear integration weights, feature integration, and integration-by-parts
+targets. It samples feasible windows using a local RNG, avoiding PySINDy's global
+RNG and unbounded rejection sampling. Each grid-aligned window contains at least
+three samples. Both sides are normalized by the test-function integral, giving
+each window equal weight without changing coefficient units.
+
+`H_xt` is the window half width in tau (null means selected trajectory span/20),
+and must be positive and smaller than half the selected span. `p>=1` defines
+`phi=(1-z^2)^p`; `random_state` makes window sampling repeatable. Keep weak
+`derivative_order=0`, `implicit_terms=false` and `include_bias=false` because the
+pointwise basis determines bias terms and column order.
+
+`tweak0`/`tweakf` select inclusive recorded t* bounds, with open endpoints by
+default. Alternatively supply `fit_window_case` for trajectory-specific bounds;
+do not combine it with `tweak0`/`tweakf`. Cases 1/3 require no training
+differentiator. Cases 2/4/5 require one to construct lift-rate states on full
+trajectories before cropping, but weak regression never differentiates its targets.
+
+```python
+from sindy_viv.case_bryan.compute_sindy.weak_functions import compute_weak_sindy
+
+models = compute_weak_sindy(
+    dynamics_case=1,
+    optimizer_case="configs/optimizer/stlsq_basic.json",
+    state_feature_library_case="configs/feature_library/polynomial_3.json",
+    weak_feature_library_case="configs/weak_feature_library/default.json",
+    vr_list=[3],
+    random_state=7,
+)
+```
+
+The five existing `script/perform_weak_sindy_*.py` entry points expose
+`--weak_feature_library_case`, `--fit_window_case`, and `--random_state`.
+Configure the window count, half width and test degree in the weak-library JSON.
+For example:
+
+```powershell
+python script/perform_weak_sindy_single_individual.py --dynamics_case 1 --state_feature_library_case configs/feature_library/polynomial_3.json --weak_feature_library_case configs/weak_feature_library/default.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 3 --random_state 7
+```
+
+Returned models retain the pointwise basis for `predict`, `simulate`, feature
+names, and coefficient export. Artifacts include `model.csv`, `training.json`
+and optional `model.pkl`. Weak paths include the weak-library config filename
+without `.json`, immediately below the fit mode and above the pointwise basis:
+
+```text
+.../weak_individual/default/polynomial_1/<optimizer>/...
+.../weak_parametric_vr/default/state_polynomial_1/input_polynomial_2/<optimizer>/...
+```
+
+Different weak-library config names keep their results in separate folders.
+Changing settings within the same config name still overwrites matching results.
+Training metadata snapshots the resolved weak descriptor, seed, bounds and
+per-trajectory half widths. Evaluation accepts `--weak_feature_library_case`
+to select the same folder; omitted means `default.json`.
 
 The six standard CLI entry points also retain their other arguments and defaults.
 Each script passes its fixed selectors to the shared function. Python callers
@@ -230,6 +291,7 @@ evaluation workflows with `weak=True` / `--weak`.
 
 References:
 
+- [PySINDy WeakPDELibrary documentation](https://pysindy.readthedocs.io/en/stable/generated/pysindy.feature_library.WeakPDELibrary.html)
 - [PySINDy ConstrainedSR3 documentation](https://pysindy.readthedocs.io/en/stable/generated/pysindy.optimizers.ConstrainedSR3.html)
 - [PySINDy SINDyCP overview](https://pysindy.readthedocs.io/en/latest/examples/sindy-addl-examples/36401db/example.html)
 
@@ -251,11 +313,11 @@ python script/perform_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --dif
 
 Cases 1 through 5 support this mode, including measured controls,
 reciprocal/tensored parameter libraries, and physical constraints.
-WeakSINDy remains a placeholder; its existing CLI inputs are unchanged.
+WeakSINDy also supports `parameterization="lpd"` through the Python API.
 
 ## Fitting time bounds
 
-The only fitting-window input is `fit_window_case` / `--fit_window_case`, a JSON config
+For standard SINDy, the fitting-window input is `fit_window_case` / `--fit_window_case`, a JSON config
 under `configs/fit_window/single/` or `configs/fit_window/two_tandem/`.
 Single-cylinder files map `VR -> {tstar0, tstarf}`. Tandem files map
 `LpD -> VR -> {tstar0, tstarf}`. The limits are properties of trajectories,

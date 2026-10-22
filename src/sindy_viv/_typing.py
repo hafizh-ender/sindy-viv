@@ -36,7 +36,7 @@ class EvaluationSummary(TypedDict):
 
     variable_names: list[str]
     metrics: dict[str, dict[str, float]]
-    model_path: Path
+    model_path: Path | None
     metrics_path: Path
     figure_path: Path | None
     solver: dict[str, Any] | None

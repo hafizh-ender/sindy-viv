@@ -61,6 +61,12 @@ def parse_args() -> argparse.Namespace:
         help="Read a weakly fitted model."
     )
 
+    parser.add_argument(
+        '--weak_feature_library_case',
+        default=None,
+        help="Weak-library config used for training; selects its result folder with --weak (default: default.json)."
+    )
+
     # Training dataset identification
     # Training selectors choose a saved fit; vr_list/lpd_list and tstar0/tstarf choose evaluation data.
     parser.add_argument(

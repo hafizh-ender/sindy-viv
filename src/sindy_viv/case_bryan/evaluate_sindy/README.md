@@ -143,12 +143,19 @@ libraries from parsed configuration dictionaries and preserves tensor boundaries
 and input-index groups during outer multiplication without changing feature
 values, names, or CSV alignment.
 
-Set `weak=True` to read `weak_individual`, `weak_parametric_vr`, or
-`weak_parametric_vr_lpd` results. Evaluation uses the returned pointwise
-equations, rather than weak integration windows. For weak case 1, pass
+Set `weak=True` to read `weak_individual`, `weak_parametric_vr`,
+`weak_parametric_lpd`, or `weak_parametric_vr_lpd` results. Evaluation uses the returned pointwise
+equations, rather than weak integration windows. For weak cases 1/3, pass
 `differentiator_case=None`. Derivative evaluation then requires
 `evaluation_differentiator_case` to construct its reference. Integral evaluation
-of weak case 1 needs neither differentiator.
+of weak cases 1/3 needs neither differentiator.
+
+Pass `weak_feature_library_case` / `--weak_feature_library_case` with the same
+weak-library config used for training. Its filename stem selects the subfolder
+between `weak_individual` (or `weak_parametric_*`) and the pointwise feature
+library. Omitting it selects `default`. Evaluation uses only this name and does
+not load the weak integration settings. Older results without that subfolder
+remain accessible through `model_dir` / `--model_dir`.
 
 `differentiator_case` identifies the training configuration and model path.
 `evaluation_differentiator_case` optionally selects a different reference
@@ -297,3 +304,138 @@ reused per resolved model for known shape-only libraries. Unknown/data-adaptive
 and reciprocal libraries retain their original per-trajectory full fitting
 and validation. Shared case layouts keep fitting and integral reference
 preparation consistent without changing time scaling or physical state choices.
+
+
+## Numerical derivative assessment before fitting
+
+`assess_derivatives` in `derivative_assessment.py` checks the numerical derivative
+without fitting a SINDy model. It differentiates the full record first, crops
+states and targets together, then performs two independent assessments:
+
+1. Solve `X' = interpolated_Xdot(tau)` from the measured state at the first
+   selected sample and compare reconstructed X with recorded X using NRMSE.
+   The default `trapezoid` method exactly integrates the piecewise-linear
+   derivative history. Adaptive `RK45`/`DOP853` are also available.
+2. For Cases 1/2/3, compare `D(h)` with recorded hdot and `D(recorded hdot)`
+   with recorded hddot, separately for each cylinder. Comparisons use matching
+   timestamps, with no automatic shift to compensate for source-data staggering.
+
+The IVP uses prescribed derivative histories, independently of any learned
+SINDy equations. Cases 4/5 assess their lift states and have no motion-state
+recorded-derivative comparison. No additional smoothing stage is applied.
+
+```powershell
+python script/assess_derivative.py --dynamics_case 1 --cylinder_type single --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single.json
+```
+
+Reports and optional plots are saved under
+`results/<dataset>/derivative_assessment/dynamics_case_<n>/<differentiator>/...`.
+Each channel has NRMSE; constant-reference normalized metrics are null. A
+configuration snapshot records the full-record differentiation and same-time
+comparison conventions. Use `--no_plot` for reports only.
+
+## Frequency assessment
+
+`case_bryan/analysis/frequency.py` contains numerical computation only:
+
+- `compute_frequency_analysis(tstar, data, variable_names, ...)` returns full
+  single-sided amplitude/phase spectra, means and dominant positive-frequency bins.
+- `dominant_frequency_analysis(...)` returns a serializable dominant-bin summary.
+- `complete_frequency_analysis(...)` returns the full numerical result.
+
+Frequency is `f*=cycles/t*`; callers convert loader time using `tstar=VR*tau`.
+Means are removed before applying a periodic FFT window, and amplitudes are
+corrected for coherent gain. Phase is a cosine phase in radians relative to
+**the first selected sample**. The mean is reported separately. Constant or
+unresolved channels have null dominant frequency and phase. FFT bins are not
+interpolated; reports include their frequency resolution. Frequencies require
+uniform sampling. Plotting lives separately in `case_bryan/frequency_plot.py`.
+The raw `script/frequency_analysis_*.py` scripts now save dominant-bin JSON
+summaries beside their figures.
+
+Model frequency functions live in `evaluate_sindy/frequency_functions.py`:
+
+```python
+from sindy_viv.case_bryan.evaluate_sindy import (
+    evaluate_frequency_derivative, evaluate_frequency_integral,
+)
+
+reports = evaluate_frequency_derivative(
+    dynamics_case=1,
+    optimizer_case="configs/optimizer/stlsq_basic.json",
+    state_feature_library_case="configs/feature_library/polynomial_3.json",
+    weak=True,
+    weak_feature_library_case="configs/weak_feature_library/default.json",
+    vr_list=[3],
+    evaluation_differentiator_case="configs/differentiator/savitzky_golay_single.json",
+)
+```
+
+`evaluate_frequency_derivative` reconstructs XdotSINDy from the saved equations.
+With `compare_reference=True` (default), it also constructs reference Xdot and
+compares their frequency and phase. `evaluate_frequency_integral` instead
+simulates XSINDy and compares it with recorded X. Both support normal and weak
+models, all case/cylinder/parameter selections, model-directory selection, and
+separate fitting/evaluation windows through the existing evaluation keywords.
+
+Set `compare_reference=False` (`--model_only`) to save only model frequencies.
+Derivative targets are then skipped; a differentiator is still required when
+lift-rate states must be constructed. This is distinct from choosing a training
+differentiator config solely to identify a standard-model directory.
+
+Every mode saves model dominant frequency/amplitude/phase CSV and a metadata JSON
+under `evaluation/.../frequency`. Comparison mode also saves reference and
+comparison CSV files. JSON records the selected interval, phase origin, FFT
+window, frequency resolution, model identity, and solver diagnostics.
+
+Frequency error is prediction minus reference. The CSV records each signal's
+own dominant-bin phase, but the reported phase difference uses **the reference
+peak frequency for both signals**, wrapped into [-pi, pi]. It is null if either
+signal has unresolved amplitude at that frequency. Phases at different peak
+frequencies are never subtracted. `amplitude_floor` can mark weak amplitudes
+unresolved; a numerical roundoff floor is always applied.
+
+```powershell
+python script/evaluate_frequency_sindy.py --evaluation_type derivative --dynamics_case 1 --vr_list 3 --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --weak --evaluation_differentiator_case configs/differentiator/savitzky_golay_single.json
+```
+
+Change `--evaluation_type` to `integral` for state-trajectory frequency assessment.
+Use `--save_plot` for spectrum comparison figures, `--save_spectra` for full NPZ
+spectra, and `--fft_window` for a taper. `--tstar0`/`--tstarf` select the common
+assessment interval. Additional model/data/solver selectors are listed by `--help`.
+
+## Closed motion/lift integration for Cases 4 and 5
+
+Pass `coupled_motion=True` to integral `evaluate_sindy` or
+`evaluate_frequency_integral`, or add `--coupled_motion` to their integral CLIs.
+This evolves `[h, hdot, CL, CLdot]` per cylinder; tandem states list cylinder 0
+then cylinder 1. The known structural equations supply
+
+```text
+h'    = hdot
+hdot' = -4*pi^2*h + 2*VR^2/(pi*structural_mstar)*CL
+```
+
+At every solver stage the **evolving** motion variables are passed into the
+fitted lift library. For Case 4, hddot is recomputed from the equation above;
+for Case 5, only evolving h/hdot are supplied. Measured motion after the initial
+state does not drive this simulation. Both fitted lift equations are retained;
+if exact CL'=CLdot was enforced during training, that relation remains enforced.
+Constant VR/L/D parameter columns are supplied in their original library order.
+
+`structural_mstar` / `--structural_mstar` selects the physical mass ratio,
+independently of the rounded dataset label. Its default is the cylinder-specific
+true mass ratio from constants.py. Set it explicitly for synthetic data or
+another structural model. All rates and integration times use tau=t*/VR.
+
+Closed-loop reports use the `coupled_integral` filename prefix, so prescribed
+motion and coupled results are retained separately. They include every evolved
+state, per-state NRMSE, and the physical mass ratio in solver metadata. The same
+mode can be assessed in the frequency domain with `--coupled_motion`.
+
+```powershell
+python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --coupled_motion
+```
+
+The feature/optimizer/differentiator configs in an evaluation command must match
+an existing saved fit; these commands evaluate models rather than training them.

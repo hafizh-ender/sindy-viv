@@ -141,12 +141,12 @@ def prepare_fit_window_bounds(
 def crop_training_trajectory(
     time: ArrayLike,
     states: np.ndarray,
-    derivatives: np.ndarray,
+    derivatives: np.ndarray | None,
     inputs: np.ndarray | None,
     lpd: float,
     vr: float,
     bounds: tuple[float | None, float | None],
-) -> tuple[TimeArray, np.ndarray, np.ndarray, np.ndarray | None, dict[str, Any]]:
+) -> tuple[TimeArray, np.ndarray, np.ndarray | None, np.ndarray | None, dict[str, Any]]:
     """Crop aligned prepared arrays inclusively after full-signal differentiation.
 
     Input time is float64 tau; bounds are requested t* endpoints with None for
@@ -158,7 +158,7 @@ def crop_training_trajectory(
     Parameters:
         time (array-like): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
         states (numpy.ndarray): State samples with one column per state name.
-        derivatives (numpy.ndarray): Prepared derivative targets aligned with states.
+        derivatives (numpy.ndarray or None): Prepared targets, omitted for weak/integral workflows.
         inputs (numpy.ndarray or None): Aligned measured controls and constant parameter columns, or None.
 
         lpd (float): Cylinder spacing L/D; None denotes the single-cylinder configuration.
@@ -197,7 +197,7 @@ def crop_training_trajectory(
     return (
         time[region].copy(),
         states[region].copy(),
-        derivatives[region].copy(),
+        None if derivatives is None else derivatives[region].copy(),
         None if inputs is None else inputs[region].copy(),
         metadata
     )

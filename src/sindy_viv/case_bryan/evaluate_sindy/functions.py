@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from numpy.typing import DTypeLike
 from os import PathLike
 from sindy_viv._typing import CylinderType, DynamicsCase, EvaluationRecord, Parameterization
@@ -14,8 +14,8 @@ import numpy as np
 import pysindy as ps
 
 from sindy_viv.case_bryan.constants import (
-    SINGLE_CYLINDER_CASE_NAME, SINGLE_CYLINDER_RE, SINGLE_CYLINDER_MSTAR,
-    TWO_TANDEM_CYLINDERS_CASE_NAME, TWO_TANDEM_CYLINDERS_RE, TWO_TANDEM_CYLINDERS_MSTAR,
+    SINGLE_CYLINDER_CASE_NAME, SINGLE_CYLINDER_RE, SINGLE_CYLINDER_MSTAR, SINGLE_CYLINDER_MSTAR_TRUE,
+    TWO_TANDEM_CYLINDERS_CASE_NAME, TWO_TANDEM_CYLINDERS_RE, TWO_TANDEM_CYLINDERS_MSTAR, TWO_TANDEM_CYLINDERS_MSTAR_TRUE,
 )
 from sindy_viv.case_bryan.input import load_data_single_cylinder, load_data_two_tandem_cylinders
 from sindy_viv.case_bryan.plot import select_plot_variables
@@ -26,6 +26,7 @@ from sindy_viv.feature_library.functions import uses_shape_only_fit
 from sindy_viv.feature_library import prepare_library
 from sindy_viv.case_bryan.model_storage import resolve_model_directory, model_base_directory
 from sindy_viv.utils import add_dot_text, initiate_object, load_config
+from .coupled_integration import coupled_reference, simulate_coupled_lift
 from .model_evaluation import (
     load_coefficients, model_differentiator_name, predict_derivative,
     report_evaluation, select_time_region, simulate, validate_selection,
@@ -67,6 +68,9 @@ def evaluate_sindy(
     training_vr_list: Sequence[float] | None = None,
     training_lpd_list: Sequence[float] | None = None,
     fit_window_case: str | PathLike[str] | None = None,
+    weak_feature_library_case: str | PathLike[str] | None = None,
+    coupled_motion: bool = False,
+    structural_mstar: float | None = None,
 ) -> dict[float | tuple[float, float], EvaluationRecord]:
     """Evaluate saved models by derivative reconstruction or initial-value simulation.
 
@@ -79,9 +83,14 @@ def evaluate_sindy(
     VR, L/D, and joint L/D-VR models require input_feature_library_case.
     Training selectors identify a fitted model independently of evaluation VR/L/D.
     fit_window_case selects a named training-window JSON config, not evaluation bounds.
+    weak_feature_library_case identifies the weak-library folder by config stem
+    when weak=True; None selects "default". The weak config is not loaded.
     Pass model_dir when multiple datasets or fitting windows match.
-    Cases 3 and 4 prescribe measured controls during integration; only model
-    states evolve.
+    Cases 3-5 normally prescribe measured controls during integration. With
+    coupled_motion=True, Cases 4/5 instead evolve [h, hdot, CL, CLdot] per
+    cylinder, using the known structural equations and both fitted lift
+    equations. structural_mstar selects the physical mass ratio (default:
+    cylinder-specific true mass ratio), independently of the dataset label.
 
     Parameters:
         dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
@@ -105,7 +114,7 @@ def evaluate_sindy(
 
         evaluation_differentiator_case (str, PathLike[str], or None): Optional reference differentiator config. Default: None
 
-        weak (bool): Locate legacy weak coefficients; does not enable weak fitting. Default: False
+        weak (bool): Locate weakly fitted model coefficients. Default: False
 
         save_plot (bool): Whether to save the comparison figure alongside the metric report. Default: True
         return_data (bool): True returns full arrays; False retains small report records. Default: True
@@ -135,6 +144,7 @@ def evaluate_sindy(
         training_vr_list (Sequence[float] or None): Reduced velocities used to fit the saved model, independently of the evaluation selection. Default: None
         training_lpd_list (Sequence[float] or None): Cylinder spacings used to fit the saved model, independently of the evaluation selection. Default: None
         fit_window_case (str, PathLike[str], or None): Training-window JSON path used to select saved coefficients; None leaves window selection open. Default: None
+        weak_feature_library_case (str, PathLike[str], or None): Weak-library config used to identify the saved weak model; None selects default.json. Default: None
 
     Returns:
         {VR: record} for single cylinders or {(LpD, VR): record} for tandem.
@@ -147,6 +157,108 @@ def evaluate_sindy(
         FileNotFoundError for missing coefficients, RuntimeError for incomplete
         integration. Matching metric/figure filenames are overwritten.
     """
+    evaluations = {}
+    for item in _iter_sindy_predictions(
+        dynamics_case=dynamics_case,
+        optimizer_case=optimizer_case,
+        evaluation_type=evaluation_type,
+        cylinder_type=cylinder_type,
+        parameterization=parameterization,
+        differentiator_case=differentiator_case,
+        state_feature_library_case=state_feature_library_case,
+        input_feature_library_case=input_feature_library_case,
+        vr_list=vr_list,
+        lpd_list=lpd_list,
+        tstar0=tstar0,
+        tstarf=tstarf,
+        evaluation_differentiator_case=evaluation_differentiator_case,
+        weak=weak,
+        save_plot=save_plot,
+        return_data=return_data,
+        xlim=xlim,
+        ylim_mean_time=ylim_mean_time,
+        ylim_source=ylim_source,
+        plot_variables=plot_variables,
+        plot_cylinders=plot_cylinders,
+        method=method,
+        rtol=rtol,
+        atol=atol,
+        solver_options=solver_options,
+        block_size=block_size,
+        results_root=results_root,
+        re=re,
+        mstar=mstar,
+        dtype=dtype,
+        model_dir=model_dir,
+        training_vr_list=training_vr_list,
+        training_lpd_list=training_lpd_list,
+        fit_window_case=fit_window_case,
+        weak_feature_library_case=weak_feature_library_case,
+        coupled_motion=coupled_motion,
+        structural_mstar=structural_mstar,
+    ):
+        key = item.pop('key')
+        evaluations[key] = report_evaluation(
+            item['kind'], item['model_dir'], item['report_dir'], item['time'], item['vr'],
+            item['reference'], item['prediction'], item['variable_names'], item['parameter_values'],
+            item['reference_differentiator_name'], solver=item['solver'],
+            save_plot=save_plot, xlim=xlim, ylim_mean_time=ylim_mean_time,
+            ylim_source=ylim_source, plot_variables=plot_variables, plot_cylinders=plot_cylinders,
+            block_size=block_size, return_data=return_data,
+        )
+        del item
+    return evaluations
+
+
+def _iter_sindy_predictions(
+    dynamics_case: DynamicsCase,
+    optimizer_case: str | PathLike[str],
+    *,
+    evaluation_type: Literal["derivative", "integral"] = "derivative",
+    cylinder_type: CylinderType = "single",
+    parameterization: Parameterization = "individual",
+    differentiator_case: str | PathLike[str] | None = None,
+    state_feature_library_case: str | PathLike[str] | None = None,
+    input_feature_library_case: str | PathLike[str] | None = None,
+    vr_list: Sequence[float] | None = None,
+    lpd_list: Sequence[float] | None = None,
+    tstar0: float | None = None,
+    tstarf: float | None = None,
+    evaluation_differentiator_case: str | PathLike[str] | None = None,
+    weak: bool = False,
+    save_plot: bool = True,
+    return_data: bool = True,
+    xlim: Sequence[float] | None = None,
+    ylim_mean_time: Sequence[float | None] = (None, None),
+    ylim_source: Literal["reference", "prediction", "both", "true", "pred"] = 'reference',
+    plot_variables: Sequence[str] | None = None,
+    plot_cylinders: Sequence[int] | None = None,
+    method: str | type = "RK45",
+    rtol: float | np.ndarray = 1e-6,
+    atol: float | np.ndarray = 1e-9,
+    solver_options: dict[str, Any] | None = None,
+    block_size: int = 10_000,
+    results_root: str | PathLike[str] = "results",
+    re: float | None = None,
+    mstar: float | None = None,
+    dtype: DTypeLike = np.float64,
+    model_dir: str | PathLike[str] | None = None,
+    training_vr_list: Sequence[float] | None = None,
+    training_lpd_list: Sequence[float] | None = None,
+    fit_window_case: str | PathLike[str] | None = None,
+    weak_feature_library_case: str | PathLike[str] | None = None,
+    coupled_motion: bool = False,
+    structural_mstar: float | None = None,
+    with_reference: bool = True,
+) -> Iterator[dict[str, Any]]:
+    """Yield one prepared prediction/reference trajectory at a time without writing reports.
+
+    Shared by time-domain and frequency assessment. with_reference=False skips
+    derivative targets and their differentiator requirement when no rate state
+    needs one. Motion controls in coupled mode are generated from evolving states.
+    """
+    if coupled_motion and (evaluation_type != 'integral' or dynamics_case not in (4, 5)):
+        raise ValueError('coupled_motion requires integral evaluation of Case 4 or 5.')
     if evaluation_type not in ("derivative", "integral"):
         raise ValueError("evaluation_type must be 'derivative' or 'integral'.")
 
@@ -169,6 +281,11 @@ def evaluate_sindy(
     else:
         raise ValueError("cylinder_type must be 'single' or 'two_tandem'.")
 
+    if coupled_motion:
+        structural_mstar = (SINGLE_CYLINDER_MSTAR_TRUE if cylinder_type == 'single'
+                            else TWO_TANDEM_CYLINDERS_MSTAR_TRUE) if structural_mstar is None else structural_mstar
+        if not np.isfinite(structural_mstar) or structural_mstar <= 0:
+            raise ValueError('structural_mstar must be finite and positive.')
     layout = get_case_layout(dynamics_case, cylinder_type)
     variable_names = list(layout.measured_names)
     vr_list = validate_selection(vr_list, "vr_list")
@@ -211,7 +328,7 @@ def evaluate_sindy(
     reference_case = evaluation_differentiator_case if evaluation_differentiator_case is not None else differentiator_case
 
     # Integral structural cases need no differentiation; lift-rate states do.
-    if evaluation_type == "derivative":
+    if evaluation_type == "derivative" and with_reference:
         if reference_case is None:
             raise ValueError("Derivative evaluation requires evaluation_differentiator_case or differentiator_case.")
 
@@ -231,7 +348,6 @@ def evaluate_sindy(
     if parameterization != "individual":
         input_library_config = load_config(input_feature_library_case)
 
-    evaluations = {}
     fitted_libraries = {}
     for lpd in lpd_list:
         for vr in vr_list:
@@ -241,6 +357,7 @@ def evaluate_sindy(
                 results_root, case_name, dynamics_case, model_differentiator, fit_mode,
                 cylinder_type, parameterization, state_feature_library_case,
                 input_feature_library_case, optimizer_case, re, mstar, vr, lpd,
+                weak_feature_library_case=weak_feature_library_case,
             )
 
             # Training datasets and fitting windows are independent of the trajectories being evaluated.
@@ -261,17 +378,20 @@ def evaluate_sindy(
             # The same case layout constructs training and integral reference states.
             trajectory = prepare_trajectory(
                 time, data, variable_names, differentiator, dynamics_case, cylinder_type,
-                dtype=dtype, with_derivatives=evaluation_type == "derivative",
+                dtype=dtype, with_derivatives=evaluation_type == "derivative" and with_reference,
             )
             t, X = trajectory.time[region].copy(), trajectory.states[region].copy()
             state_names, input_names = trajectory.state_names, trajectory.input_names
             U = None if trajectory.inputs is None else trajectory.inputs[region].copy()
 
             if evaluation_type == "derivative":
-                reference = trajectory.derivatives[region].copy()
+                reference = trajectory.derivatives[region].copy() if with_reference else None
                 variable_names_to_report = add_dot_text(state_names)
             else:
                 reference, variable_names_to_report = X, state_names
+
+            if coupled_motion:
+                reference, variable_names_to_report = coupled_reference(X, state_names, U, input_names, cylinder_type)
 
             # Validate figure filters without removing states needed by prediction or integration.
             if save_plot:
@@ -322,6 +442,13 @@ def evaluate_sindy(
             if evaluation_type == "derivative":
                 prediction = predict_derivative(library, coefficients, X, parameters, input_data=U, block_size=block_size)
                 solver = None
+            elif coupled_motion:
+                prediction, solver = simulate_coupled_lift(
+                    library, coefficients, t, reference[0], case=dynamics_case,
+                    cylinder_type=cylinder_type, vr=vr, mstar=structural_mstar,
+                    parameters=parameters, method=method, rtol=rtol, atol=atol,
+                    solver_options=solver_options,
+                )
             else:
                 prediction, solver = simulate(
                     library, coefficients, t, reference, parameters,
@@ -339,15 +466,11 @@ def evaluate_sindy(
                 report_dir /= f"LpD = {lpd}"
 
             report_dir /= f"VR = {vr}"
-            evaluations[key] = report_evaluation(
-                evaluation_type, model_dir, report_dir, t, vr, reference, prediction,
-                variable_names_to_report, parameter_values, reference_name,
-                save_plot=save_plot, xlim=xlim, ylim_mean_time=ylim_mean_time, ylim_source=ylim_source,
-                plot_variables=plot_variables, plot_cylinders=plot_cylinders,
-                block_size=block_size, solver=solver, return_data=return_data,
+            yield dict(
+                key=key, kind='coupled_integral' if coupled_motion else evaluation_type,
+                model_dir=model_dir, report_dir=report_dir, time=t, vr=vr,
+                reference=reference if with_reference else None, prediction=prediction,
+                variable_names=variable_names_to_report, parameter_values=parameter_values,
+                reference_differentiator_name=reference_name, solver=solver,
             )
-
-            # Summary mode releases this trajectory before loading the next dataset.
             del t, X, reference, prediction, U
-
-    return evaluations

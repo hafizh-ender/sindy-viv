@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from numpy.typing import ArrayLike
 from os import PathLike
 from pysindy.feature_library.base import BaseFeatureLibrary
@@ -31,14 +31,14 @@ def model_differentiator_name(
 ) -> str:
     """Validate the dynamics case and return its training differentiator path label.
 
-    Legacy weak Case 1 uses no_differentiator. Other cases require a config
+    Weak Cases 1/3 use no_differentiator. Other cases require a config
     path; only its stem is returned, without opening the file.
 
     Parameters:
         dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
 
         differentiator_case (str, PathLike[str], or None): Differentiator configuration path identifying the fitted model.
-        weak (bool): Whether to locate legacy weak-model results; weak fitting remains unimplemented.
+        weak (bool): Whether to locate weak-model results.
     """
     match dynamics_case:
         case 1 | 2 | 3 | 4 | 5:
@@ -46,8 +46,8 @@ def model_differentiator_name(
         case _:
             raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
 
-    # WeakSINDy on Case 1 is saved without a training differentiator in its model path.
-    if weak and dynamics_case == 1:
+    # Cases without lift-rate states require no training differentiation for weak fits.
+    if weak and dynamics_case in (1, 3):
         return "no_differentiator"
 
     if differentiator_case is None:
@@ -263,10 +263,35 @@ def simulate(
             return predict_derivative(library, coefficients, state[None, :], input_data=control_at_time(tau)[None, :])[0]
         return predict_derivative(library, coefficients, state[None, :], parameters)[0]
 
+    return solve_state_ivp(rhs, time, reference[0], parameters=parameters,
+                           method=method, rtol=rtol, atol=atol, solver_options=options)
+
+
+def solve_state_ivp(
+    rhs: Callable[[float, np.ndarray], np.ndarray], time: ArrayLike, initial_state: ArrayLike, *,
+    parameters: Sequence[float] = (), method: str | type = 'RK45',
+    rtol: float | np.ndarray = 1e-6, atol: float | np.ndarray = 1e-9,
+    solver_options: dict[str, Any] | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Solve an IVP on exactly the requested tau grid and validate full coverage.
+
+    Only initial_state supplies reference information. Nonfinite or incomplete
+    solves raise RuntimeError with the solver's original diagnostic. Reserved
+    equation/grid/solver overrides in solver_options raise ValueError.
+    """
+    time = np.asarray(time, dtype=np.float64)
+    initial_state = np.asarray(initial_state, dtype=np.float64)
+    if (time.ndim != 1 or len(time) < 2 or not np.all(np.isfinite(time)) or np.any(np.diff(time) <= 0)
+            or initial_state.ndim != 1 or not len(initial_state) or not np.all(np.isfinite(initial_state))):
+        raise ValueError('IVP requires finite increasing times and a finite one-dimensional initial state.')
+    options = dict(solver_options or {})
+    forbidden = {'fun', 't_span', 'y0', 't_eval', 'args', 'vectorized', 'method', 'rtol', 'atol'}
+    if forbidden.intersection(options):
+        raise ValueError(f"solver_options cannot override {sorted(forbidden.intersection(options))}.")
     solution = solve_ivp(
         rhs,
         t_span=(float(time[0]), float(time[-1])),
-        y0=np.asarray(reference[0], dtype=np.float64),
+        y0=initial_state,
         t_eval=time,
         method=method,
         rtol=rtol,
@@ -293,7 +318,7 @@ def simulate(
 
     prediction = np.asarray(solution.y.T, dtype=np.float64)
 
-    if prediction.shape != reference.shape or not np.all(np.isfinite(prediction)):
+    if prediction.shape != (len(time), len(initial_state)) or not np.all(np.isfinite(prediction)):
         raise RuntimeError("Model integration returned an invalid state trajectory.")
 
     diagnostics = {
@@ -310,7 +335,7 @@ def simulate(
 
 def report_evaluation(
     kind: str,
-    model_dir: str | PathLike[str],
+    model_dir: str | PathLike[str] | None,
     report_dir: str | PathLike[str],
     time: ArrayLike,
     vr: float,
@@ -341,7 +366,7 @@ def report_evaluation(
 
     Parameters:
         kind (str): Evaluation label used in report filenames.
-        model_dir (str or PathLike[str]): Resolved directory containing the saved model.csv.
+        model_dir (str, PathLike[str], or None): Saved-model directory; None for pre-fit derivative assessment.
         report_dir (str or PathLike[str]): Destination directory for evaluation metrics and figures.
 
         time (array-like): Sample times in the coordinate used by the data; Bryan preparation and evaluation use float64 tau.
@@ -402,7 +427,7 @@ def report_evaluation(
     }
     payload = {
         'evaluation': kind,
-        'model_path': str(Path(model_dir) / 'model.csv'),
+        'model_path': None if model_dir is None else str(Path(model_dir) / 'model.csv'),
         # 'time_coordinate': 'tau; t_star = VR * tau',
         'time_region': [float(time[0]), float(time[-1])],
         'tstar_region': [float(time_star[0]), float(time_star[-1])],
@@ -444,7 +469,7 @@ def report_evaluation(
     result = {
         'variable_names': list(variable_names),
         'metrics': metrics,
-        'model_path': Path(model_dir) / 'model.csv',
+        'model_path': None if model_dir is None else Path(model_dir) / 'model.csv',
         'metrics_path': metrics_path, 'figure_path': figure_path, 'solver': solver,
         'sample_count': len(time),
         'time_region': payload['time_region'], 'tstar_region': payload['tstar_region'],

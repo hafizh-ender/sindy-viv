@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from numpy.typing import DTypeLike
 from os import PathLike
 from sindy_viv._typing import CylinderType, DynamicsCase, Parameterization
-from typing import NoReturn
 
 import json
 import pickle
@@ -39,6 +38,7 @@ from sindy_viv.case_bryan.model_storage import (
 from sindy_viv.feature_library import prepare_library
 from sindy_viv.sindy.functions import perform_sindy
 from sindy_viv.utils import add_dot_text, initiate_object, load_config
+from .weak_functions import compute_weak_sindy  # Backward-compatible public import.
 
 def compute_sindy(
     dynamics_case: DynamicsCase,
@@ -307,66 +307,3 @@ def compute_sindy(
             return model
 
     return models
-
-def compute_weak_sindy(
-    dynamics_case: DynamicsCase,
-    optimizer_case: str | PathLike[str],
-    *,
-    cylinder_type: CylinderType = "single",
-    parameterization: Parameterization = "individual",
-    state_feature_library_case: str | PathLike[str] | None = None,
-    input_feature_library_case: str | PathLike[str] | None = None,
-    vr_list: Sequence[float] | None = None,
-    lpd_list: Sequence[float] | None = None,
-    save_pkl: bool = False,
-    differentiator_case: str | PathLike[str] | None = None,
-    tweak0: float | None = None,
-    tweakf: float | None = None,
-    K: int = 100,
-    H_xt: float | None = None,
-    p: int = 4,
-    random_state: int | None = 0,
-    results_root: str | PathLike[str] = "results",
-    re: float | None = None,
-    mstar: float | None = None,
-    dtype: DTypeLike = np.float64,
-    constraint_mstar: float | None = None,
-) -> NoReturn:
-    """Reserve the WeakSINDy API and legacy integration-window arguments.
-
-    No data, libraries or optimizers are loaded. Always raises NotImplementedError.
-    Retained tweak0/tweakf denote future integration bounds in recorded t*.
-
-    Parameters:
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
-
-        optimizer_case (str or PathLike[str]): Optimizer configuration path.
-
-        cylinder_type (str): Cylinder configuration: single or two_tandem. Default: 'single'
-        parameterization (str): Explicit fitting family: individual, vr, lpd, or vr_lpd. Default: 'individual'
-
-        state_feature_library_case (str, PathLike[str], or None): Response-library configuration path for states and measured controls. Default: None
-        input_feature_library_case (str, PathLike[str], or None): Parameter-library configuration path, required for explicit parametric fitting. Default: None
-
-        vr_list (Sequence[float] or None): Reduced velocities selected for the requested workflow. Default: None
-        lpd_list (Sequence[float] or None): Cylinder spacings L/D selected for tandem-cylinder workflows. Default: None
-
-        save_pkl (bool): Whether to save the fitted model as model.pkl. Default: False
-
-        differentiator_case (str, PathLike[str], or None): Differentiator configuration path identifying the fitted model. Default: None
-        tweak0 (float or None): Reserved first weak-integration time in recorded t*. Default: None
-        tweakf (float or None): Reserved last weak-integration time in recorded t*. Default: None
-        K (int): Reserved number of weak integration subdomains. Default: 100
-        H_xt (float or None): Reserved weak-subdomain half width in dynamic time tau. Default: None
-        p (int): Reserved weak test-function polynomial degree. Default: 4
-        random_state (int or None): Reserved random seed for weak-subdomain sampling. Default: 0
-        results_root (str or PathLike[str]): Root directory for fitted models and evaluation artifacts. Default: 'results'
-
-        re (float or None): Reynolds number used in dataset labels; None selects the cylinder-specific value. Default: None
-        mstar (float or None): Mass ratio; workflow entry points use the cylinder-specific value when None. Default: None
-
-        dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
-
-        constraint_mstar (float or None): Mass ratio for structural constraints; None selects the cylinder-specific physical value. Default: None
-    """
-    raise NotImplementedError("WeakSINDy is not implemented.")

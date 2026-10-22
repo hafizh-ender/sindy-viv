@@ -1,10 +1,10 @@
 """Command-line entry point for the weak Bryan-case computation."""
 
-from typing import NoReturn
+import pysindy as ps
 
 import argparse
 
-from sindy_viv.case_bryan.compute_sindy.functions import compute_weak_sindy
+from sindy_viv.case_bryan.compute_sindy.weak_functions import compute_weak_sindy
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
         "--differentiator_case",
         type=str,
         required=False,
-        help="Reserved differentiator config for lift-rate states in cases 2, 4 and 5."
+        help="Differentiator config for lift-rate states in cases 2, 4 and 5."
     )
     argument_parser.add_argument(
         "--state_feature_library_case",
@@ -59,8 +59,13 @@ def parse_args() -> argparse.Namespace:
         help="Optimizer case to perform WeakSINDy on."
     )
 
-    # Weak-form integration settings
-    # Reserved integration bounds use CSV fluid time t*; WeakSINDy fitting is not implemented.
+    argument_parser.add_argument(
+        "--weak_feature_library_case", type=str, default=None,
+        help="WeakPDELibrary settings JSON; defaults to configs/weak_feature_library/default.json."
+    )
+
+    # Integration bounds use CSV fluid time t*.
+    # Window count, half width and test degree come from the weak-library JSON.
     argument_parser.add_argument(
         "--tweak0",
         type=float,
@@ -74,27 +79,14 @@ def parse_args() -> argparse.Namespace:
         help="Inclusive integration end in t*; defaults to the trajectory end."
     )
     argument_parser.add_argument(
-        "--K",
-        type=int,
-        default=100,
-        help="Number of weak integration windows."
-    )
-    argument_parser.add_argument(
-        "--H_xt",
-        type=float,
-        default=None,
-        help="Time half-window in tau; defaults to one twentieth of the selected trajectory span."
-    )
-    argument_parser.add_argument(
-        "--p",
-        type=int,
-        default=4,
-        help="Weak test-function polynomial degree."
-    )
-    argument_parser.add_argument(
         "--random_state",
         type=int,
         default=0
+    )
+
+    argument_parser.add_argument(
+        "--fit_window_case", type=str, default=None,
+        help="Per-trajectory t* window JSON; use instead of --tweak0/--tweakf."
     )
 
     # Output settings
@@ -106,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     return argument_parser.parse_args()
 
 
-def main() -> NoReturn:
+def main() -> ps.SINDy | dict[float | tuple[float, float], ps.SINDy]:
     """Delegate this explicit cylinder/parameterization command to the package API."""
     return compute_weak_sindy(
         cylinder_type="two_tandem", parameterization="vr_lpd", **vars(parse_args()),

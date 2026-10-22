@@ -40,13 +40,17 @@ def model_base_directory(
     mstar: float,
     vr: float,
     lpd: float,
+    *,
+    weak_feature_library_case: str | PathLike[str] | None = None,
 ) -> Path:
-    """Build the shared legacy-compatible model path before dataset/window folders.
+    """Build the shared model path before dataset/window folders.
 
     Library and differentiator configuration stems identify settings. Single
     datasets include Re/Mstar; tandem data retain their fixed dataset layout.
     VR/LpD appear here only for individual fits; parametric selections and
     fitting windows are appended by training_directory.
+    Weak fits insert the weak-library config stem immediately after fit_mode;
+    None selects the default weak-library label, "default".
 
     Parameters:
         results_root (str or PathLike[str]): Root directory for fitted models and evaluation artifacts.
@@ -65,8 +69,11 @@ def model_base_directory(
         mstar (float): Mass ratio; workflow entry points use the cylinder-specific value when None.
         vr (float): Reduced velocity for this trajectory or fixed-VR model.
         lpd (float): Cylinder spacing L/D; None denotes the single-cylinder configuration.
+        weak_feature_library_case (str, PathLike[str], or None): Weak-library config path identifying weak fits; only its stem is used. Default: None
     """
     directory = Path(results_root) / case_name / f"dynamics_case_{dynamics_case}" / differentiator_name / fit_mode
+    if fit_mode.startswith('weak_'):
+        directory /= Path(weak_feature_library_case or 'default.json').stem
     if parameterization == "individual":
         directory /= Path(state_feature_library_case).stem
     else:

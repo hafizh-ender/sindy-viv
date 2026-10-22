@@ -62,6 +62,12 @@ def parse_args() -> argparse.Namespace:
         help="Read a weakly fitted model."
     )
 
+    parser.add_argument(
+        '--weak_feature_library_case',
+        default=None,
+        help="Weak-library config used for training; selects its result folder with --weak (default: default.json)."
+    )
+
     # Training dataset identification
     # Training selectors choose a saved fit; vr_list/lpd_list and tstar0/tstarf choose evaluation data.
     parser.add_argument(
@@ -107,6 +113,15 @@ def parse_args() -> argparse.Namespace:
         '--evaluation_differentiator_case',
         default=None,
         help="Optional reference differentiator for lift-rate states in cases 2, 4 and 5."
+    )
+
+    parser.add_argument(
+        '--coupled_motion', action='store_true',
+        help="For Cases 4/5, evolve h/hdot with the known structural equations and learned lift dynamics."
+    )
+    parser.add_argument(
+        '--structural_mstar', type=float, default=None,
+        help="Physical mass ratio for coupled-motion simulation; defaults to the cylinder-specific true value."
     )
 
     # Numerical integration settings
