@@ -1,0 +1,28 @@
+{
+    "module": "pysindy",
+    "class_name": "TensoredLibrary",
+    "kwargs": {
+        "libraries": [
+            {
+                "module": "pysindy",
+                "class_name": "PolynomialLibrary",
+                "kwargs": {
+                    "degree": 3,
+                    "include_bias": true
+                }
+            },
+            {
+                "module": "pysindy",
+                "class_name": "PolynomialLibrary",
+                "kwargs": {
+                    "degree": 1,
+                    "include_bias": true
+                }
+            }
+        ],
+        "inputs_per_library": [
+            [0, 1],
+            [2, 3, 4]
+        ]
+    }
+}

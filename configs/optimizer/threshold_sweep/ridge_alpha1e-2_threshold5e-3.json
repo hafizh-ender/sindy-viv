@@ -1,0 +1,11 @@
+{
+  "module": "pysindy.optimizers.stlsq",
+  "class_name": "STLSQ",
+  "kwargs": {
+    "threshold": 0.005,
+    "alpha": 0.01,
+    "normalize_columns": false,
+    "unbias": false,
+    "verbose": true
+  }
+}

@@ -119,13 +119,18 @@ def _evaluate_frequency(
         if save_plot:
             import matplotlib.pyplot as plt
             from sindy_viv.case_bryan.frequency_plot import plot_frequency_comparison
-            figure, _ = plot_frequency_comparison(predicted, reference, title=item['kind'])
-            try:
-                figure_path = report_dir / (stem+'.png')
-                figure.savefig(figure_path, dpi=200)
-                record['figure_path'] = figure_path
-            finally:
-                plt.close(figure)
+            record['figure_paths'] = []
+            for component in ('amplitude', 'phase'):
+                figure, _ = plot_frequency_comparison(predicted, reference, title=item['kind'], component=component)
+                try:
+                    figure_path = report_dir / (stem+'_'+component+'.png')
+                    figure.savefig(figure_path, dpi=300)
+                    record[component+'_figure_path'] = figure_path
+                    record['figure_paths'].append(figure_path)
+                finally:
+                    plt.close(figure)
+            record['figure_path'] = record['amplitude_figure_path']
+            (report_dir / (stem+'.png')).unlink(missing_ok=True)
         if return_data:
             record.update(prediction_spectrum=predicted, reference_spectrum=reference)
         result[item['key']] = record

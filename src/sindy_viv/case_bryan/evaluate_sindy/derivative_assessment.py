@@ -16,6 +16,9 @@ from sindy_viv.case_bryan.constants import (
     TWO_TANDEM_CYLINDERS_CASE_NAME, TWO_TANDEM_CYLINDERS_RE, TWO_TANDEM_CYLINDERS_MSTAR,
 )
 from sindy_viv.case_bryan.input import load_data_single_cylinder, load_data_two_tandem_cylinders
+from sindy_viv.case_bryan.analysis.paths import analysis_directory
+from sindy_viv.case_bryan.model_storage.paths import training_directory
+from sindy_viv.case_bryan.model_storage.fit_windows import load_fit_window_config, prepare_fit_window_bounds
 from sindy_viv.case_bryan.prepare_sindy.case_layout import get_case_layout
 from sindy_viv.case_bryan.prepare_sindy.trajectory import prepare_trajectory
 from sindy_viv.case_bryan.validation import validate_selection
@@ -67,6 +70,8 @@ def assess_derivatives(
     results_root: str | PathLike[str] = 'results', re: float | None = None, mstar: float | None = None,
     method: str | type = 'trapezoid', rtol: float | np.ndarray = 1e-7, atol: float | np.ndarray = 1e-9,
     solver_options: dict[str, Any] | None = None, save_plot: bool = True, return_data: bool = False,
+    filtering_case: str | PathLike[str] | None = None,
+    fit_window_case: str | PathLike[str] | None = None,
 ) -> dict[float | tuple[float, float], dict[str, Any]]:
     """Assess full-record numerical derivatives on a selected reporting interval.
 
@@ -76,8 +81,12 @@ def assess_derivatives(
     with recorded hdot and D(recorded hdot) with recorded hddot, per cylinder.
     Recorded comparisons use matching timestamps without shifting the data.
     Cases 4/5 contain no motion states, so only their lift-state IVP is checked.
-    No smoothing stage or SINDy fitting is performed. Outputs include separate
+    Optional filtering_case smooths full records before differentiation.
+    fit_window_case supplies per-trajectory reporting bounds; do not combine it
+    with explicit tstar0/tstarf. Full-record filtering/differentiation precede cropping.
+    No SINDy fitting is performed. Outputs include separate
     JSON/plots for the IVP and recorded-channel checks, plus a config snapshot.
+    Unfiltered reports use an explicit filtering=None folder beside named filters.
     """
     layout = get_case_layout(dynamics_case, cylinder_type)
     single = cylinder_type == 'single'
@@ -89,7 +98,14 @@ def assess_derivatives(
     vrs = validate_selection(((3, 4, 5, 6, 7, 8) if single else tuple(range(5, 15)))
                              if vr_list is None else vr_list, 'vr_list')
     lpds = (None,) if single else validate_selection((1.5, 2., 3., 3.5, 4.) if lpd_list is None else lpd_list, 'lpd_list')
+    if fit_window_case is not None and (tstar0 is not None or tstarf is not None):
+        raise ValueError('Use either fit_window_case or tstar0/tstarf, not both.')
+    window_config = load_fit_window_config(fit_window_case, cylinder_type) if fit_window_case is not None else None
+    bounds = (prepare_fit_window_bounds(window_config, [(lpd, vr) for lpd in lpds for vr in vrs], cylinder_type)
+              if window_config is not None else dict.fromkeys([(lpd, vr) for lpd in lpds for vr in vrs], (tstar0, tstarf)))
     config = load_config(differentiator_case)
+    filtering_config = load_config(filtering_case) if filtering_case is not None else None
+    filtering = initiate_object(**filtering_config) if filtering_case is not None else None
     names = list(layout.measured_names)
     motion_states = dynamics_case in (1, 2, 3)
     if motion_states:
@@ -101,8 +117,11 @@ def assess_derivatives(
                 time, data = load_data_single_cylinder(re, mstar, vr, variables=names)
             else:
                 time, data = load_data_two_tandem_cylinders(re, mstar, vr, lpd, variables=names)
+            if filtering is not None:
+                data = filtering(data, time)
             prepared = prepare_trajectory(time, data, names, initiate_object(**config), dynamics_case, cylinder_type)
-            region = select_time_region(prepared.time, vr, tstar0, tstarf)
+            start, stop = bounds[(lpd, vr)]
+            region = select_time_region(prepared.time, vr, start, stop)
             t = prepared.time[region].copy()
             states = prepared.states[region].copy()
             derivatives = prepared.derivatives[region].copy()
@@ -117,11 +136,12 @@ def assess_derivatives(
             del data, time, prepared
             prediction, solver = reconstruct_from_derivatives(t, derivatives, states[0], method=method,
                                                               rtol=rtol, atol=atol, solver_options=solver_options)
-            folder = (Path(results_root) / case_name / 'derivative_assessment' / f'dynamics_case_{dynamics_case}'
-                      / Path(differentiator_case).stem / f'Re = {re}' / f'Mstar = {mstar}')
-            if lpd is not None:
-                folder /= f'LpD = {lpd}'
-            folder /= f'VR = {vr}'
+            folder = (analysis_directory(results_root, case_name, cylinder_type, re, mstar, lpd=lpd, vr=vr)
+                      / 'derivative_assessment' / f'dynamics_case_{dynamics_case}'
+                      / ('filtering=' + (Path(filtering_case).stem if filtering_case is not None else 'None'))
+                      / Path(differentiator_case).stem)
+            folder = training_directory(folder, 'individual', [dict(
+                VR=vr, LpD=lpd, requested_tstar0=start, requested_tstarf=stop)], fit_window_case)
             labels = {'Re': re, 'm^*': mstar, 'V_R': vr}
             if lpd is not None:
                 labels['L/D'] = lpd
@@ -140,6 +160,10 @@ def assess_derivatives(
             snapshot = dict(dynamics_case=dynamics_case, cylinder_type=cylinder_type, differentiator=config,
                             time_coordinate='tau=t*/VR', recorded_comparison_alignment='same timestamp; no shifts',
                             differentiation_scope='full trajectory before cropping')
+            if filtering_case is not None:
+                snapshot['filtering'] = dict(name=Path(filtering_case).stem, source=str(filtering_case), config=filtering_config)
+            if fit_window_case is not None:
+                snapshot['fit_window'] = dict(name=Path(fit_window_case).stem, source=str(fit_window_case), config=window_config)
             # Each report has its own time bounds; the snapshot records processing conventions.
             folder.mkdir(parents=True, exist_ok=True)
             (folder / 'assessment_config.json').write_text(json.dumps(snapshot, indent=2, allow_nan=False), encoding='utf-8')

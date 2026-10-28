@@ -9,6 +9,7 @@ from sindy_viv._typing import CylinderType, DynamicsCase, EvaluationRecord, Para
 from typing import Any, Literal
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pysindy as ps
@@ -30,6 +31,7 @@ from .coupled_integration import coupled_reference, simulate_coupled_lift
 from .model_evaluation import (
     load_coefficients, model_differentiator_name, predict_derivative,
     report_evaluation, select_time_region, simulate, validate_selection,
+    reference_limit_options, validate_max_state_factor,
 )
 
 def evaluate_sindy(
@@ -59,6 +61,7 @@ def evaluate_sindy(
     rtol: float | np.ndarray = 1e-6,
     atol: float | np.ndarray = 1e-9,
     solver_options: dict[str, Any] | None = None,
+    max_state_factor: float | None = 10.0,
     block_size: int = 10_000,
     results_root: str | PathLike[str] = "results",
     re: float | None = None,
@@ -71,6 +74,7 @@ def evaluate_sindy(
     weak_feature_library_case: str | PathLike[str] | None = None,
     coupled_motion: bool = False,
     structural_mstar: float | None = None,
+    filtering_case: str | PathLike[str] | None = None,
 ) -> dict[float | tuple[float, float], EvaluationRecord]:
     """Evaluate saved models by derivative reconstruction or initial-value simulation.
 
@@ -82,6 +86,8 @@ def evaluate_sindy(
     All fits use state_feature_library_case. Parameterization is explicit;
     VR, L/D, and joint L/D-VR models require input_feature_library_case.
     Training selectors identify a fitted model independently of evaluation VR/L/D.
+    filtering_case selects the filter config used in training and applies it to
+    full evaluation measurements before reference differentiation and cropping.
     fit_window_case selects a named training-window JSON config, not evaluation bounds.
     weak_feature_library_case identifies the weak-library folder by config stem
     when weak=True; None selects "default". The weak config is not loaded.
@@ -129,6 +135,7 @@ def evaluate_sindy(
         rtol (float or numpy.ndarray): Relative integration tolerance passed to scipy.integrate.solve_ivp. Default: 1e-06
         atol (float or numpy.ndarray): Absolute integration tolerance passed to scipy.integrate.solve_ivp. Default: 1e-09
         solver_options (dict[str, Any] or None): Additional keyword settings passed to scipy.integrate.solve_ivp. Default: None
+        max_state_factor (float or None): Integral-only native event limit: N times each state's maximum absolute reference value in the selected evaluation window. N must exceed 1; None disables the event. Default: 10.
 
         block_size (int): Positive row limit for derivative features/metric scratch. Default: 10000
 
@@ -145,6 +152,7 @@ def evaluate_sindy(
         training_lpd_list (Sequence[float] or None): Cylinder spacings used to fit the saved model, independently of the evaluation selection. Default: None
         fit_window_case (str, PathLike[str], or None): Training-window JSON path used to select saved coefficients; None leaves window selection open. Default: None
         weak_feature_library_case (str, PathLike[str], or None): Weak-library config used to identify the saved weak model; None selects default.json. Default: None
+        filtering_case (str, PathLike[str], or None): Smoothing config identifying the filtered model and preprocessing full reference measurements. Default: None
 
     Returns:
         {VR: record} for single cylinders or {(LpD, VR): record} for tandem.
@@ -154,8 +162,9 @@ def evaluate_sindy(
 
     Raises:
         ValueError for invalid selections/configuration or ambiguous models,
-        FileNotFoundError for missing coefficients, RuntimeError for incomplete
-        integration. Matching metric/figure filenames are overwritten.
+        FileNotFoundError for missing coefficients. Incomplete time-domain IVPs
+        retain partial trajectories, diagnostic metrics and two comparison views.
+        Matching metric/figure filenames are overwritten.
     """
     evaluations = {}
     for item in _iter_sindy_predictions(
@@ -184,6 +193,7 @@ def evaluate_sindy(
         rtol=rtol,
         atol=atol,
         solver_options=solver_options,
+        max_state_factor=max_state_factor,
         block_size=block_size,
         results_root=results_root,
         re=re,
@@ -196,6 +206,8 @@ def evaluate_sindy(
         weak_feature_library_case=weak_feature_library_case,
         coupled_motion=coupled_motion,
         structural_mstar=structural_mstar,
+        filtering_case=filtering_case,
+        allow_partial_integration=evaluation_type == 'integral',
     ):
         key = item.pop('key')
         evaluations[key] = report_evaluation(
@@ -205,7 +217,12 @@ def evaluate_sindy(
             save_plot=save_plot, xlim=xlim, ylim_mean_time=ylim_mean_time,
             ylim_source=ylim_source, plot_variables=plot_variables, plot_cylinders=plot_cylinders,
             block_size=block_size, return_data=return_data,
+            requested_tstar_region=item.get('requested_tstar_region'),
         )
+        if item['solver'] is not None and not item['solver'].get('complete', True):
+            warnings.warn(f"Incomplete integration for {item['parameter_values']}; saved the completed "
+                          f"interval {evaluations[key]['tstar_region']} in {item['report_dir']}.",
+                          RuntimeWarning, stacklevel=2)
         del item
     return evaluations
 
@@ -237,6 +254,7 @@ def _iter_sindy_predictions(
     rtol: float | np.ndarray = 1e-6,
     atol: float | np.ndarray = 1e-9,
     solver_options: dict[str, Any] | None = None,
+    max_state_factor: float | None = 10.0,
     block_size: int = 10_000,
     results_root: str | PathLike[str] = "results",
     re: float | None = None,
@@ -249,7 +267,9 @@ def _iter_sindy_predictions(
     weak_feature_library_case: str | PathLike[str] | None = None,
     coupled_motion: bool = False,
     structural_mstar: float | None = None,
+    filtering_case: str | PathLike[str] | None = None,
     with_reference: bool = True,
+    allow_partial_integration: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """Yield one prepared prediction/reference trajectory at a time without writing reports.
 
@@ -261,6 +281,8 @@ def _iter_sindy_predictions(
         raise ValueError('coupled_motion requires integral evaluation of Case 4 or 5.')
     if evaluation_type not in ("derivative", "integral"):
         raise ValueError("evaluation_type must be 'derivative' or 'integral'.")
+    if evaluation_type == 'integral':
+        max_state_factor = validate_max_state_factor(max_state_factor)
 
     if ylim_source not in ('reference', 'prediction', 'both', 'true', 'pred'):
         raise ValueError("ylim_source must be 'reference', 'prediction', or 'both'.")
@@ -345,6 +367,8 @@ def _iter_sindy_predictions(
         reference_name = "no_differentiator"
 
     state_library_config = load_config(state_feature_library_case)
+    filtering_config = load_config(filtering_case) if filtering_case is not None else None
+    filtering = initiate_object(**filtering_config) if filtering_case is not None else None
     if parameterization != "individual":
         input_library_config = load_config(input_feature_library_case)
 
@@ -352,12 +376,19 @@ def _iter_sindy_predictions(
     for lpd in lpd_list:
         for vr in vr_list:
 
+            if evaluation_type == 'integral':
+                print(f'Integral evaluation: {cylinder_type}, Case {dynamics_case}, '
+                      f'{parameterization}, VR={vr}'
+                      +(f', L/D={lpd}' if lpd is not None else '')
+                      +f', t*=[{tstar0}, {tstarf}]: loading data/model', flush=True)
+
             # Select the model directory using the requested model and training selectors.
             model_dir = model_base_directory(
                 results_root, case_name, dynamics_case, model_differentiator, fit_mode,
                 cylinder_type, parameterization, state_feature_library_case,
                 input_feature_library_case, optimizer_case, re, mstar, vr, lpd,
                 weak_feature_library_case=weak_feature_library_case,
+                filtering_case=filtering_case,
             )
 
             # Training datasets and fitting windows are independent of the trajectories being evaluated.
@@ -379,8 +410,11 @@ def _iter_sindy_predictions(
             trajectory = prepare_trajectory(
                 time, data, variable_names, differentiator, dynamics_case, cylinder_type,
                 dtype=dtype, with_derivatives=evaluation_type == "derivative" and with_reference,
+                filtering=filtering,
             )
             t, X = trajectory.time[region].copy(), trajectory.states[region].copy()
+            requested_tstar_region = [float(t[0]*vr) if tstar0 is None else float(tstar0),
+                                      float(t[-1]*vr) if tstarf is None else float(tstarf)]
             state_names, input_names = trajectory.state_names, trajectory.input_names
             U = None if trajectory.inputs is None else trajectory.inputs[region].copy()
 
@@ -392,6 +426,9 @@ def _iter_sindy_predictions(
 
             if coupled_motion:
                 reference, variable_names_to_report = coupled_reference(X, state_names, U, input_names, cylinder_type)
+
+            if evaluation_type == 'integral':
+                integration_options = reference_limit_options(reference, max_state_factor, atol, solver_options)
 
             # Validate figure filters without removing states needed by prediction or integration.
             if save_plot:
@@ -443,18 +480,36 @@ def _iter_sindy_predictions(
                 prediction = predict_derivative(library, coefficients, X, parameters, input_data=U, block_size=block_size)
                 solver = None
             elif coupled_motion:
+                print(f'  Integrating coupled motion/lift: {len(t)} requested samples', flush=True)
                 prediction, solver = simulate_coupled_lift(
                     library, coefficients, t, reference[0], case=dynamics_case,
                     cylinder_type=cylinder_type, vr=vr, mstar=structural_mstar,
                     parameters=parameters, method=method, rtol=rtol, atol=atol,
-                    solver_options=solver_options,
+                    solver_options=integration_options,
+                    allow_partial=allow_partial_integration,
                 )
             else:
+                print(f'  Integrating: {len(t)} requested samples', flush=True)
                 prediction, solver = simulate(
                     library, coefficients, t, reference, parameters,
-                    method=method, rtol=rtol, atol=atol, solver_options=solver_options,
+                    method=method, rtol=rtol, atol=atol, solver_options=integration_options,
                     input_data=U,
+                    allow_partial=allow_partial_integration,
                 )
+
+            if solver is not None:
+                if 'state_limits' in solver:
+                    solver['state_limit_variable_names'] = list(variable_names_to_report)
+                if 'state_limit_event_time' in solver:
+                    solver['state_limit_event_tstar'] = float(vr*solver['state_limit_event_time'])
+                print(f"  IVP {'complete' if solver.get('complete', True) else 'partial'}: "
+                      f'{len(prediction)}/{len(t)} samples; '
+                      f"{solver['message']}", flush=True)
+
+            if solver is not None and not solver.get('complete', True):
+                count = len(prediction)
+                t, reference = t[:count].copy(), reference[:count].copy()
+            del X, U
 
             report_dir = model_dir / "evaluation"
             parameter_values = {'Re': re, 'm^*': mstar, 'V_R': vr}
@@ -472,5 +527,6 @@ def _iter_sindy_predictions(
                 reference=reference if with_reference else None, prediction=prediction,
                 variable_names=variable_names_to_report, parameter_values=parameter_values,
                 reference_differentiator_name=reference_name, solver=solver,
+                requested_tstar_region=requested_tstar_region,
             )
-            del t, X, reference, prediction, U
+            del t, reference, prediction

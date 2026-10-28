@@ -1,0 +1,13 @@
+{
+    "module": "pysindy",
+    "class_name": "WeakPDELibrary",
+    "kwargs": {
+        "K": 1500,
+        "H_xt": 6,
+        "p": 4,
+        "derivative_order": 0,
+        "include_bias": false,
+        "include_interaction": false,
+        "implicit_terms": false
+    }
+}

@@ -27,6 +27,8 @@ class SavitzkyGolayDerivative(BaseDifferentiation):
     Notes:
         SciPy returns zero for derivative orders above polyorder. Bryan state
         preparation requires a first-derivative callable, so use deriv=1 there.
+        Lift acceleration targets use a separate deriv=2 instance directly on
+        lift measurements when polyorder >= 2; the original settings stay intact.
         Time spacing is checked in float64 independently of working precision;
         no fluid/dynamic time conversion is performed by this differentiator.
     """

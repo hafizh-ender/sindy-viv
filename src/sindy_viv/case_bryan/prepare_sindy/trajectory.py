@@ -8,8 +8,9 @@ import numpy as np
 from numpy.typing import DTypeLike
 
 from sindy_viv._typing import CylinderType, DynamicsCase, Differentiator, FloatArray, TimeArray, PreparedInputs
-from sindy_viv.differentiation import perform_derivative
+from sindy_viv.differentiation import perform_derivative, perform_second_derivative
 from .case_layout import get_case_layout
+from .filtering import Filter
 
 
 def append_parameter_columns(
@@ -100,6 +101,7 @@ def prepare_trajectory(
     time: np.ndarray, data: np.ndarray, names: list[str],
     differentiator: Differentiator | None, case: DynamicsCase, cylinder_type: CylinderType,
     *, dtype: DTypeLike = np.float64, with_derivatives: bool = True,
+    filtering: Filter | None = None,
 ) -> PreparedTrajectory:
     """Prepare canonical states and controls on float64 tau without rescaling time.
 
@@ -108,6 +110,8 @@ def prepare_trajectory(
     return first derivatives in tau with the same shape as its input.
     with_derivatives=False computes only lift rates needed for Cases 2/4/5 and
     omits regression targets. Differentiate full trajectories before cropping.
+    Lift accelerations use native second derivatives of filtered lift for
+    supported methods; other callables differentiate the lift rate again.
     Invalid names, dimensions or dtypes raise ValueError.
 
     Parameters:
@@ -122,6 +126,7 @@ def prepare_trajectory(
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
         with_derivatives (bool): Whether to compute full derivative targets; False computes only derivatives required to construct states. Default: True
+        filtering (callable or None): Optional (data, time) smoothing of all loaded measured channels before state/control construction or differentiation. Default: None
     """
     layout = get_case_layout(case, cylinder_type)
     value_dtype = np.dtype(dtype)
@@ -137,6 +142,11 @@ def prepare_trajectory(
     indices = {name: column for column, name in enumerate(names)}
     if any(name not in indices for name in layout.measured_names):
         raise ValueError("Some chosen state or input variables are not present in the full state variable names.")
+    if filtering is not None:
+        filtered = np.asarray(filtering(np.asarray(data, dtype=value_dtype), t), dtype=value_dtype)
+        if filtered.shape != data.shape or not np.all(np.isfinite(filtered)):
+            raise ValueError("Filtering must return finite measurements with the same shape as its input.")
+        data = filtered
     state_names, input_names = list(layout.state_names), list(layout.input_names)
     states = np.empty((len(t), len(state_names)), dtype=value_dtype)
     state_indices = {name: column for column, name in enumerate(state_names)}
@@ -160,8 +170,15 @@ def prepare_trajectory(
             states[:, state_indices[rate]] = first[:, source_names.index(lift)]
         del first, sources
         if with_derivatives and layout.rate_names:
+            lift_columns = [state_indices[name] for name in layout.lift_names]
             rate_columns = [state_indices[name] for name in layout.rate_names]
-            derivatives[:, rate_columns] = perform_derivative(t, states[:, rate_columns], differentiator)
+            second = np.asarray(perform_second_derivative(
+                t, states[:, lift_columns], differentiator,
+                first_derivative=states[:, rate_columns],
+            ), dtype=value_dtype)
+            if second.shape != (len(t), len(rate_columns)):
+                raise ValueError("The second derivative must return the same shape as its lift input.")
+            derivatives[:, rate_columns] = second
     inputs = None
     if input_names:
         inputs = np.empty((len(t), len(input_names)), dtype=value_dtype)

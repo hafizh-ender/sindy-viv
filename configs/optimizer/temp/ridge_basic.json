@@ -1,0 +1,10 @@
+{
+    "module": "sklearn.linear_model",
+    "class_name": "Ridge",
+    "kwargs": {
+        "alpha": 5e-2,
+        "fit_intercept": false,
+        "solver": "auto",
+        "tol": 1e-6
+    }
+}

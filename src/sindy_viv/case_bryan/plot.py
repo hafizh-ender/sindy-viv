@@ -14,6 +14,32 @@ import matplotlib.pyplot as plt
 PLOT_COLORS = ('black', 'red', 'blue')
 LINE_WIDTH = 0.6
 
+
+def fft_figure_size(rows: int, columns: int = 1) -> tuple[float, float]:
+    """Compact individual FFT figures to 75% of their former width and height."""
+    height = 5*rows+.5 if columns == 1 else 3*rows+1
+    return 4.5, .75*height
+
+
+def format_parameter_title(parameter_values: Mapping[str, float]) -> str:
+    """Format parameters in math text; omit fixed Re/mass labels for single-cylinder plots."""
+    symbols = {'VR': 'V_R', 'Vr': 'V_R', 'vr': 'V_R', 'LpD': 'L/D', 'lpd': 'L/D'}
+    tandem = any(name in parameter_values for name in ('L/D', 'LpD', 'lpd'))
+    physical = {'Re', 're', 'm^*', 'm*', 'mstar', 'Mstar', 'm_star'}
+    terms = r',\quad '.join(f'{symbols.get(name, name)}={value}' for name, value in parameter_values.items()
+                           if tandem or name not in physical)
+    return f'${terms}$' if terms else ''
+
+
+def format_nrmse(value: float) -> str:
+    """Use three significant digits, switching to math-text scientific form below 0.01."""
+    if 0 < abs(value) < .01:
+        mantissa, exponent = f'{value:.2e}'.split('e')
+        if int(exponent) <= -3:
+            return rf'${mantissa}\times10^{{{int(exponent)}}}$'
+    return f'{value:.3g}'
+
+
 PLOT_VARIABLE_TEMPLATES = {
     'h': 'h_{}', 'hdot': r'\dot{{h}}_{}', 'hddot': r'\ddot{{h}}_{}',
     'CL': 'C_{{L{}}}', 'CLdot': r'\dot{{C}}_{{L{}}}', 'CLddot': r'\ddot{{C}}_{{L{}}}',
@@ -83,6 +109,15 @@ def plot_selection_suffix(
     return '_variables=' + '-'.join(re.sub(r'[^A-Za-z0-9_-]', '', name) for name in selected)
 
 
+def set_axis_fonts(ax: Axes) -> None:
+    """Use the time-series tick/label sizes on either 2D or 3D axes."""
+    ax.tick_params(labelsize=10)
+    for name in ('xaxis', 'yaxis', 'zaxis'):
+        axis = getattr(ax, name, None)
+        if axis is not None:
+            axis.label.set_size(12)
+
+
 def create_subplots(
     rows: int,
     columns: int = 1,
@@ -114,9 +149,8 @@ def create_subplots(
         ax.spines['right'].set_visible(False)
         ax.spines['bottom'].set_linewidth(0.8)
         ax.spines['left'].set_linewidth(0.8)
-        ax.tick_params(width=0.6, labelsize=10)
-        ax.xaxis.label.set_size(12)
-        ax.yaxis.label.set_size(12)
+        ax.tick_params(width=0.6)
+        set_axis_fonts(ax)
         ax.grid(True, which='both', linestyle='-', linewidth=0.4, alpha=0.35)
     return figure, axes
 
@@ -271,11 +305,11 @@ def plot_data(
     fig, axs = create_subplots(len(state_variable_names))
     try:
 
-        suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
+        suptitle_str = format_parameter_title(parameter_values_dict)
 
         # Avoid an empty math expression when no parameter values were supplied.
         if suptitle_str:
-            fig.suptitle(f"${suptitle_str}$", fontsize=14)
+            fig.suptitle(suptitle_str, fontsize=14)
 
         for i, state_variable_name in enumerate(state_variable_names):
             ax = axs[i] if len(state_variable_names) > 1 else axs
@@ -407,13 +441,15 @@ def plot_compare(
     crop_to_xlim: bool = False,
     plot_variables: Sequence[str] | None = None,
     plot_cylinders: Sequence[int] | None = None,
+    comparison_labels: tuple[str, str] = ('Reference', 'Predicted'),
 ) -> tuple[Figure, Axes | np.ndarray]:
     """Return comparison axes for finite aligned reference/prediction signals.
 
     Time and display/statistics limits use t*. ylim_source chooses reference,
     prediction or both (legacy true/pred aliases remain accepted). Independent
     statistics bounds set symmetric limits about the selected mean, with 10%
-    padding. error_metrics_dict supplies per-channel labels. Cropping is opt-in;
+    padding. comparison_labels names the reference and prediction lines.
+    error_metrics_dict supplies per-channel labels. Cropping is opt-in;
     successful figures belong to the caller and failed rendering closes them.
 
     Parameters:
@@ -446,20 +482,20 @@ def plot_compare(
     fig, axs = create_subplots(len(state_variable_names))
     try:
 
-        suptitle_str = ',\\quad '.join([f"{key}={value}" for key, value in parameter_values_dict.items()])
+        suptitle_str = format_parameter_title(parameter_values_dict)
 
         # Avoid an empty math expression when no parameter values were supplied.
         if suptitle_str:
-            fig.suptitle(f"${suptitle_str}$", fontsize=14)
+            fig.suptitle(suptitle_str, fontsize=14)
 
         for i, state_variable_name in enumerate(state_variable_names):
             ax = axs[i] if len(state_variable_names) > 1 else axs
 
             # Plot the true data for the current state variable
-            ax.plot(time[visible], data_true[visible, i], label=f"Reference ${state_variable_name}$", color=PLOT_COLORS[0], linewidth=LINE_WIDTH)
+            ax.plot(time[visible], data_true[visible, i], label=f"{comparison_labels[0]} ${state_variable_name}$", color=PLOT_COLORS[0], linewidth=LINE_WIDTH)
 
             # Plot the predicted data for the current state variable
-            ax.plot(time[visible], data_pred[visible, i], label=f"Predicted ${state_variable_name}$", color=PLOT_COLORS[1], linestyle='--', linewidth=LINE_WIDTH)
+            ax.plot(time[visible], data_pred[visible, i], label=f"{comparison_labels[1]} ${state_variable_name}$", color=PLOT_COLORS[1], linestyle='--', linewidth=LINE_WIDTH)
 
             # Turn on X-label for the last subplot only
             if i == len(state_variable_names) - 1:
@@ -471,7 +507,9 @@ def plot_compare(
             # Add error metrics to top right corner of the subplot if provided
             if error_metrics_dict is not None and state_variable_name in error_metrics_dict:
                 error_metrics = error_metrics_dict[state_variable_name]
-                error_metrics_str = ', '.join([f"${key}={value:.4f}$" for key, value in error_metrics.items()])
+                error_metrics_str = ', '.join(
+                    f"${key}={format_nrmse(value).strip('$') if key == 'NRMSE' else f'{value:.4f}'}$"
+                    for key, value in error_metrics.items())
 
                 ax.text(0.98, 0.95, error_metrics_str, transform=ax.transAxes, fontsize=10,
                         verticalalignment='top', horizontalalignment='right',
@@ -489,6 +527,8 @@ def plot_compare(
                 relative_max_value = max(abs(values.min() - mean_value), abs(values.max() - mean_value))
 
             # Set the y-axis limits based on the mean value and relative maximum value
+            if relative_max_value == 0:
+                relative_max_value = max(abs(mean_value)*.05, 1e-12)
             ax.set_ylim(mean_value - 1.1 * relative_max_value, mean_value + 1.1 * relative_max_value)
 
             # Set the x-axis limits

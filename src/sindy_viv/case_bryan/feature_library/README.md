@@ -1,4 +1,21 @@
-# Restricted wake-oscillator response libraries
+# Bryan feature libraries and assessment
+
+| Module | Functions/classes | Relationship |
+| --- | --- | --- |
+| `custom_wake_oscillator.py` | `WakeOscillatorCase2Library`, `WakeOscillatorCase4Library`, `WakeOscillatorCase5Library` | Resolve case-specific names into a generic `SelectedPolynomialLibrary`. |
+| `assessment.py` | `trajectory_groups`, `prepare_assessment_samples` | Match training trajectory groups and construct filtered/cropped states, controls and tensor parameters. |
+| `assessment.py` | `assess_bryan_feature_library` | Call generic matrix assessment and write individual/pooled reports and summaries. |
+| `assessment_plot.py` | `feature_labels`, `plot_correlation`, `plot_condition_heatmap` | Present complete feature matrices, duplicate-name mappings and VR/L/D condition grids. |
+| `assessment_cli.py` | `assessment_parser`, `main` | Parse command-line selectors and delegate to the Bryan assessment API. |
+| `legacy.py` | Compatibility re-exports | Preserve serialized callable import paths; implementations live in `compatibility`. |
+
+The factories and assessment helpers share `prepare_sindy.case_layout.get_case_layout`.
+Generic feature arithmetic and QR/SVD computation stay in the top-level
+[feature_library package](../../feature_library/README.md). The sections below
+give constructor options, CLI examples, and report definitions; helper
+docstrings describe their local inputs, return values and file side effects.
+
+## Restricted wake response libraries
 
 `WakeOscillatorCase2Library`, `WakeOscillatorCase4Library` and
 `WakeOscillatorCase5Library` are configuration factories. Each returns a
@@ -93,6 +110,15 @@ Ready-to-use Case 4 configs:
 
 - `configs/feature_library/wake_case4_vdp_acceleration_single.json`
 - `configs/feature_library/wake_case4_vdp_acceleration_two_tandem.json`
+- `configs/feature_library/wake_case4_vdp_motion_two_tandem.json`
+
+The filtered tandem runner also uses two explicit Case 4 polynomial configs.
+`case4_two_tandem_selected_polynomial_3_symmetric_only.json` includes the
+bias, all ten linear terms and all cubic terms (231 features).
+`case4_two_tandem_selected_polynomial_3_no_hCL.json` includes the bias and
+separate wake-only/motion-only polynomials through degree three (118
+features), excluding mixed wake/motion products while allowing products
+between cylinders within each group.
 
 For example:
 
@@ -110,3 +136,116 @@ src/sindy_viv/feature_library/selected_polynomial_library.py. Factories use
 get_case_layout so preparation, integral evaluation and wake features share
 one channel ordering. Existing feature names and coefficient ordering remain
 unchanged; new models pickle the exponent vectors directly.
+
+## Feature-library assessment
+
+`script/assess_feature_library.py` checks the correlation and condition number
+of the feature matrix without a saved model or optimizer. Numerical computation
+lives in the reusable `sindy_viv.feature_library.assessment` module. Bryan
+preparation and metadata live in this directory; plots reuse the shared heatmap
+grid/frame conventions.
+
+Single-cylinder state/control features:
+
+```powershell
+.\.venv\Scripts\python.exe script/assess_feature_library.py `
+  --dynamics_case 3 --cylinder_type single --vr_list 3 4 5 6 7 8 `
+  --state_feature_library_case configs/feature_library/polynomial_1.json `
+  --fit_window_case configs/fit_window/single/sinusoidal.json `
+  --filtering_case configs/filtering/butterworth_single_flim2.json
+```
+
+Tandem tensors parameterized by VR, fitted separately at each L/D:
+
+```powershell
+.\.venv\Scripts\python.exe script/assess_feature_library.py `
+  --dynamics_case 3 --n_cylinders 2 --vr_list 5 6 7 8 9 10 11 12 13 14 `
+  --lpd_list 1.5 2 3 3.5 4 --parameterization vr `
+  --state_feature_library_case configs/feature_library/polynomial_1.json `
+  --input_feature_library_case configs/feature_library/polynomial_2.json `
+  --fit_window_case configs/fit_window/two_tandem/sinusoidal.json `
+  --filtering_case configs/filtering/butterworth_two_tandem_flim2.json
+```
+
+Supported modes are `individual` (default), `vr`, `lpd`, and `vr_lpd`; L/D
+modes require tandem data. `--input_feature_library_case` is required exactly
+when a parameterized mode is selected. Aliases are `--feature_library_case`
+for the response library and `--parameter_feature_library_case` for the
+parameter library. Select the cylinder type with `--cylinder_type` or use
+`--n_cylinders 1/2`. Defaults for VR/L/D match the existing fitting scripts.
+
+Data are loaded in tau. Optional filtering acts on full measured trajectories
+before state construction and cropping. Cases 2/4/5 derive lift-rate states on
+the full record using `--differentiator_case` (default `finite_difference_basic`);
+Cases 1/3 require no differentiation. No derivative targets are computed.
+Measured controls remain in the response basis; constant parameters follow
+them, ordered `V_R`, `L/D`, or `L/D, V_R`, exactly as in training.
+
+`--fit_window_case` selects trajectory-specific recorded-t* windows. Alternatively,
+use `--tstar0`/`--tstarf`; these cannot be combined with a window JSON. With no
+window selectors, the cylinder-specific `overall.json` is used. `--batch_size`
+controls computation batches, not sampling. `--rank_rtol` optionally overrides
+the numerical SVD rank tolerance. `--show` displays the saved figures.
+
+Default report roots are:
+
+```text
+results/<case-name>/analysis/[Re = <Re>/Mstar = <mstar>/]feature_library_assessment/
+  dynamics_case_<n>/[filtering=<config>]/<state-differentiator-or-none>/
+  <individual-or-parametric-mode>/state_<library>/[input_<parameter-library>]/
+  rank_rtol=<auto-or-value>/[LpD=<selection>/]VR=<selection>/
+  [fit_window=<name>/]time=<bounds-or-per-trajectory-id>/
+```
+
+`--results_root` replaces `results`; `--output_dir` replaces the assessment
+root while retaining a case-name subfolder. Matching outputs are overwritten.
+The Re/Mstar folders are present for single-cylinder default outputs only,
+matching the other single-cylinder analyses. Tandem outputs remain directly
+under their dataset's analysis folder. An explicit output_dir retains its
+custom case-name layout.
+Configs, physical data settings, exact column order, source windows, actual
+sample intervals, and numerical definitions are retained in JSON metadata.
+
+Each `individual/[LpD=<value>/]VR=<value>/` contains:
+
+- `correlation_matrix.png`: Pearson matrix in [-1, 1], with constant-feature
+  pairs shown in gray as N/A.
+- `correlation_matrix.csv`: the complete numeric matrix, in feature order.
+- `correlation_metadata.json`: full metadata, column labels/IDs, constants,
+  singular values, numerical rank, tolerance, and condition-number definition.
+- `condition_number.json`: one condition number, with `"Infinity"` used for
+  numerically deficient column rank to preserve valid JSON.
+
+The selection-level `condition_number_heatmap.png` has one row across VR for
+single-cylinder data, or L/D rows by VR columns for tandem data. Finite values
+use a logarithmic color scale; gray cells annotated infinity denote deficient
+column rank. `condition_number_summary.csv` and `.json` record all values and
+their report paths. Condition numbers use raw Theta, without normalization.
+
+Both raw and column-normalized condition numbers are written. Normalization
+divides each nonzero feature column by its full-trajectory (or full pooled-group)
+L2 norm without centering. Bias columns are retained; zero columns remain zero
+and make the normalized condition infinite. Numerical rank is assessed
+independently on each matrix using the same relative SVD tolerance.
+
+Each individual/pooled report also contains `condition_number_normalized.json`
+and `condition_number_normalized_metadata.json`. The latter records the norms,
+normalized singular values, rank and tolerance. Selection-level outputs add
+`condition_number_normalized_heatmap.png` and
+`condition_number_normalized_summary.csv` / `.json`. Correlation matrices are
+unchanged by this positive column scaling and are not duplicated.
+`--normalized_only` adds normalized reports while preserving all existing raw
+and correlation artifacts, including their summary files and figures.
+
+For large correlation matrices every cell remains present, but plots limit
+ticks to 30 labels and use feature IDs above 20 columns. JSON maps every ID
+to its complete feature name. Cell annotations are shown only up to 12 columns.
+CSV files always retain every feature; duplicate names are disambiguated by IDs.
+
+Parameterized assessments additionally write `pooled/` reports for each actual
+training group: all VRs per L/D in `vr` mode, all L/Ds per VR in `lpd` mode,
+or the whole selected grid in `vr_lpd` mode. These include a correlation
+PNG/CSV/metadata JSON and condition-number JSON for each pool. The selection
+summary lists these pooled condition numbers separately. A fixed-parameter
+trajectory can have proportional tensor columns even when the pooled matrix
+is full rank; use the pooled report to assess that multi-trajectory fit.

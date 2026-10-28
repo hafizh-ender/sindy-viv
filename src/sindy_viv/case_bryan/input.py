@@ -33,7 +33,9 @@ def _load_processed_data(
 
     CSV columns time/error contain t* and measurements. Channels are stably
     sorted and must share exactly the same recorded timestamps. Bryan's uniform
-    reconstruction runs once, then tau=t*/VR. Signal storage follows dtype;
+    reconstruction runs once. The optional, locally toggled alignment block
+    advances recorded hddot by one sample and trims all channels/time to N-1
+    rows before tau=t*/VR. Signal storage follows dtype;
     empty selections, unknown strategies and misaligned time axes raise ValueError.
 
     Parameters:
@@ -80,6 +82,22 @@ def _load_processed_data(
     # Handle duplicate timestamps according to the specified strategy.
     time_array, data_array = solve_time_duplicates(reference_time, data_array, strategy=strategy)
 
+    # hddot[k+1] belongs with h[k], hdot[k], CL[k], etc. at time[k].
+    # Set the flag to False, or comment out this entire alignment section,
+    # to restore the original unshifted, N-row loading behavior.
+    align_recorded_acceleration = True
+    if align_recorded_acceleration:
+        if len(time_array) < 3:
+            raise ValueError("Acceleration alignment requires at least three recorded samples.")
+        aligned_data = data_array[:-1].copy()
+        
+        for column, variable in enumerate(file_paths):
+            if variable in {r'\ddot{h}_0', r'\ddot{h}_1'}:
+                aligned_data[:, column] = data_array[1:, column]
+                
+        data_array = aligned_data
+        time_array = time_array[:-1].copy()
+
     # Recall that time_array is in t* units. For derivation purposes, we need to convert it to tau units.
     # Recall that t* = t * U / D, and tau = t * f_N = t * U / (D * V_R), so tau = t* / V_R.
     time_array /= vr
@@ -99,6 +117,9 @@ def load_data_single_cylinder(
     variables determines column order. dtype controls signals only (default
     float64); timestamps are parsed independently as float64. CSV t* is uniformly
     reconstructed for Bryan's LBM data, then divided by VR exactly once.
+    With the shared acceleration-alignment block enabled, recorded hddot is
+    shifted left one sample and every selected channel/time has N-1 rows,
+    including selections that do not request hddot.
     Missing files/channels and timestamp mismatches raise the corresponding errors.
 
     Parameters:
@@ -132,6 +153,8 @@ def load_data_two_tandem_cylinders(
     accepted compatibility labels. dtype controls signal storage, not timestamp
     precision. The same timestamp-alignment/reconstruction rules as the single
     loader apply; no physical state or force scaling is performed.
+    With shared acceleration alignment enabled, both recorded accelerations
+    shift left one sample; all selected channels/time are trimmed to N-1 rows.
 
     Parameters:
         re (float): Reynolds number used in dataset labels; None selects the cylinder-specific value.

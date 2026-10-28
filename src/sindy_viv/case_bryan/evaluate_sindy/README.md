@@ -1,5 +1,28 @@
 # Bryan-case SINDy evaluation
 
+## Functions and dependencies
+
+| Module | Main functions | Input/output relationship |
+| --- | --- | --- |
+| `functions.py` | `evaluate_sindy` | Resolve a saved model, prepare one trajectory, predict derivatives or integrate an IVP, and save metrics/plots. |
+| `model_evaluation.py` | `load_coefficients`, `predict_derivative`, `pointwise_predictor` | Rebuild named coefficient evaluation without refitting. |
+| `model_evaluation.py` | `simulate`, `solve_state_ivp`, `reference_limit_options`, `report_evaluation` | Integrate with finite-state/recovery handling and report complete or accepted-prefix trajectories. |
+| `derivative_assessment.py` | `reconstruct_from_derivatives`, `assess_derivatives` | Reintegrate numerical derivatives independently of a fitted SINDy model. |
+| `coupled_integration.py` | `coupled_reference`, `simulate_coupled_lift` | Close Case 4/5 motion using structural equations with the fitted lift dynamics. |
+| `frequency_functions.py` | `compare_frequency_analysis`, `evaluate_frequency_derivative`, `evaluate_frequency_integral` | Transform model/reference predictions into frequency, amplitude and phase assessments. |
+| `error_plots.py` | `plot_saved_errors` | Discover saved error reports and render aggregate curves/heatmaps without another fit or IVP solve. |
+| `single_suite.py` | `evaluate_suite`, `evaluate_single_suite`, `evaluate_two_tandem_suite` | Orchestrate the requested windows/diagnostics and reuse each computed prediction. |
+| `suite_cli.py` | `suite_parser` | Share single/tandem suite options across thin script entry points. |
+
+Window/model identity is supplied by [model_storage](../model_storage/README.md).
+State/control order comes from [prepare_sindy](../prepare_sindy/README.md), metrics
+from the generic numerical module, and spectral arithmetic/shared heatmaps from
+[analysis](../analysis/README.md). Function docstrings document exact arguments,
+return mappings, units and partial-IVP behavior. The command examples below
+describe which selectors choose training artifacts versus evaluation data.
+
+## Evaluate saved models
+
 `functions.py` exposes `evaluate_sindy`. Explicit `if`/`elif` branches select
 `evaluation_type="derivative"` or `"integral"`, `cylinder_type="single"` or
 `"two_tandem"`, and `parameterization="individual"`, `"vr"`, or `"vr_lpd"`.
@@ -17,6 +40,12 @@ The shared function supports physical cases 1 through 5 and standard or weakly f
 models. Validation,
 coefficient alignment, numerical prediction, integration, and reporting helpers
 are in `model_evaluation.py`.
+
+For filtered models, pass the same `filtering_case` / `--filtering_case` used
+for fitting. This selects `filtering=<config-stem>` before the differentiator
+folder and smooths full loaded evaluation measurements before differentiation
+and cropping. Derivative, integral, frequency, and suite evaluations support it.
+See [filter settings and processing order](../../../../configs/filtering/README.md).
 
 ## Derivative reconstruction
 
@@ -90,11 +119,98 @@ X_dot or CLddot arrays. Both cylinders are integrated together in a tandem model
 The integration method, tolerances, and additional SciPy options are
 configurable. `solver_options` may include `max_step`, `first_step`, `jac`, or
 `events`, but cannot replace the equation, initial condition, or selected times.
-Failed or early-terminated integrations raise an error instead of scoring a
-shortened region. Diagnostics include method, tolerances, status, message, and
-evaluation counts.
+Ordinary PySINDy `PolynomialLibrary` models cache their monomial indices once
+per IVP and evaluate the same polynomial equations directly at solver stages.
+This avoids rebuilding the feature-library transform for every single sample;
+feature order, coefficients, and measured-control interpolation are preserved.
+Custom/composite libraries retain their configured transforms.
+Failed or early-terminated time-domain integrations retain the finite samples
+completed on the requested sample grid. Both ordinary and coupled Case 4/5
+evaluations save the partial trajectory in NPZ, diagnostics/metrics in JSON,
+and (unless `--no_plot` is set) two comparison figures:
 
-An integration failure also reports the solver method, parameter values,
+- `*_partial_requested.png`: completed reference/prediction samples, with xlim
+  equal to the original requested interval, such as 300..400.
+- `*_partial_modeled.png`: the same samples, with xlim limited to their completed
+  interval, such as 300..320.
+
+The figures include every modeled channel unless explicit plot filters select
+a subset. Their y limits include both reference and prediction so an exploding
+prediction remains visible. If failure occurs before any accepted progress,
+the known initial condition is saved and shown as a point; the zoom view has
+small padding around that point. No rejected trial steps are saved as predictions.
+
+The NPZ contains `time` (tau), `time_star`, `reference`, `prediction`, and
+`variable_names`. JSON sets `integration_complete=false`, distinguishes the
+requested and completed intervals/sample counts, and labels the metrics
+`metrics_scope="completed_interval"`. These scores describe only that prefix;
+saved-error summaries exclude incomplete integrations. The CLI issues a warning
+and continues with the remaining selected trajectories. Invalid configurations
+and unrelated programming errors still raise normally. Successful IVPs retain
+their usual one-figure output. Existing CLI commands need no new flag.
+
+Integral evaluation uses SciPy's native terminal events to stop excessive
+state magnitudes. Set `--max_state_factor N` (default `10`; finite `N > 1`).
+For each modeled state `j`, its limit is:
+
+```text
+limit[j] = N * max(abs(reference[:, j]))
+```
+
+The reference is cropped to the selected evaluation window (`tstar0`..`tstarf`)
+before limits are computed. Limits are constant over that IVP and independent
+for every state and cylinder; measured controls and constant parameters are not
+limited. Coupled Case 4/5 integration uses the full reference state
+`[h, hdot, CL, CLdot]` per cylinder, so all evolved components have limits.
+For an identically zero reference channel, its limit is `max(atol[j], machine
+epsilon)` (or scalar `atol`) to avoid a terminal event at the initial zero state.
+
+The event returns the smallest normalized margin to the limits, with
+`terminal=True` and `direction=-1`. SciPy detects the first outward crossing and
+locates its time using native root finding. Existing Python `solver_options`
+events are preserved. The saved trajectory contains only requested-grid samples
+at or before the event; its exact root time and state are recorded separately in
+solver diagnostics. The partial trajectory, JSON, and two plots are saved as
+above, and the evaluator continues with the next trajectory.
+
+```bat
+python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 8 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/overall_reduced.json --tstar0 450 --tstarf 500 --max_state_factor 5
+```
+
+All six integral evaluation CLIs accept this option, as does the frequency CLI
+in integral mode. It applies to ordinary and weak fits and every parameterization.
+The Python API accepts `max_state_factor=None` to disable this event. Derivative
+reconstruction has no IVP and is unaffected.
+
+The previous custom runtime/RHS-count limits and timed progress checks have been
+removed. `solver_options` now accepts native SciPy options; the former
+`max_wall_time`, `max_rhs_evaluations`, and `progress_interval` keys raise an
+explicit error. Per-trajectory loading/integration/completion messages remain.
+Native events require accepted-step progress and therefore do not impose a
+wall-clock runtime guarantee if a solver struggles before a crossing.
+
+Solver JSON includes `max_state_factor`, `reference_max_abs`, `state_limits`,
+`state_limit_variable_names`, and `zero_reference_indices`. A limit-triggered
+stop has native `status=1`, `termination_reason="state_limit"`, and the exact
+`state_limit_event_time` (tau), `state_limit_event_tstar`,
+`state_limit_event_state`, and `state_limit_reached_indices`.
+The accepted-sample recorder is retained solely to recover partial results if
+an unrelated numerical RHS exception occurs; the magnitude stop itself is
+handled by SciPy's event machinery.
+
+Ordinary and coupled simulations supply their RHS to the same `solve_state_ivp`
+driver. It validates solver options once and uses one result-validation and
+diagnostics path for both strict and partial evaluation. The recovery wrapper
+only records accepted samples and returns a solver result on numerical errors;
+it does not choose stopping criteria. Coupled motion/lift equations are evaluated
+directly from `[h, hdot, CL, CLdot]` arrays in the canonical library order.
+
+Diagnostics include method, tolerances, status, message, and evaluation counts.
+Low-level helpers keep strict full-coverage checking by default; partial
+recovery is enabled by the time-domain integration evaluator. Frequency
+evaluation still requires a complete simulated interval.
+
+An integration failure records the solver method, parameter values,
 requested tau interval, last returned sample time, sample count, and state
 magnitude. SciPy's "Required step size is less than spacing between numbers"
 can occur when the learned dynamics diverge or become singular, as well as
@@ -201,7 +317,7 @@ commands retain their configuration, `--xlim`, and
 `--ylim_mean_time` options. Both evaluation methods accept `--tstar0`,
 `--tstarf`, `--weak`, `--evaluation_differentiator_case`, `--block_size`,
 `--results_root`, and `--no_plot`. Integral CLIs also accept `--method`,
-`--rtol`, `--atol`, and `--solver_options` as a JSON mapping.
+`--rtol`, `--atol`, `--max_state_factor`, and `--solver_options` as a JSON mapping (for native SciPy options).
 
 Python callers should replace the old case-specific function imports with
 `evaluate_sindy` and the three selectors. The old case modules have been removed;
@@ -329,7 +445,10 @@ python script/assess_derivative.py --dynamics_case 1 --cylinder_type single --vr
 ```
 
 Reports and optional plots are saved under
-`results/<dataset>/derivative_assessment/dynamics_case_<n>/<differentiator>/...`.
+`results/<dataset>/analysis/<physical case>/VR = <vr>/derivative_assessment/dynamics_case_<n>/<differentiator>/time=.../`.
+The physical case is `Re = .../Mstar = ...` for a single cylinder or
+`LpD = ...` for tandem cylinders; these labels are not repeated below
+`derivative_assessment`.
 Each channel has NRMSE; constant-reference normalized metrics are null. A
 configuration snapshot records the full-record differentiation and same-time
 comparison conventions. Use `--no_plot` for reports only.
@@ -403,6 +522,14 @@ Change `--evaluation_type` to `integral` for state-trajectory frequency assessme
 Use `--save_plot` for spectrum comparison figures, `--save_spectra` for full NPZ
 spectra, and `--fft_window` for a taper. `--tstar0`/`--tstarf` select the common
 assessment interval. Additional model/data/solver selectors are listed by `--help`.
+Amplitude and phase comparisons are saved as separate `_amplitude.png` and
+`_phase.png` files with square panels. Returned records contain `figure_paths`,
+`amplitude_figure_path`, and `phase_figure_path`; `figure_path` identifies the
+amplitude figure for compatibility. Suite FFT comparisons remain amplitude-only
+over f*=0..2, with square panels.
+Individual FFT figures use the shared compact layout: a 4.5-inch canvas width
+and 25% smaller width/height, with square panels and the existing text sizes.
+Aggregate frequency/amplitude/phase trends keep their existing figure sizes.
 
 ## Closed motion/lift integration for Cases 4 and 5
 
@@ -439,3 +566,283 @@ python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --v
 
 The feature/optimizer/differentiator configs in an evaluation command must match
 an existing saved fit; these commands evaluate models rather than training them.
+# Two-tandem experiment batch
+
+Run `run_two_tandem.bat` from the repository root to execute its Parts A-D
+checklist. All 70 experiments are enabled: 10 individual Case 3 configurations
+in A, 10 VR-parametric Case 3 configurations in B, and 25 individual
+configurations each for Cases 1 and 2 in C and D. Every command selects all
+VRs 5-14 and L/D values 1.5, 2, 3, 3.5 and 4. Part B fits separately at each
+L/D using a degree-2 VR library.
+
+Each fit is followed by `evaluate_sindy_two_tandem_suite.py`. Derivatives are
+assessed over `overall_reduced`, `sinusoidal` and `sinusoidal_evaluation`;
+IVPs use `sinusoidal_evaluation` (currently t* 1350-1400 throughout the grid).
+Derivative frequency/amplitude comparisons use the latter two windows, and
+IVP spectral comparisons use the focused evaluation window. Part A adds both
+cylinders' hddot coefficient heatmaps at each L/D; Parts C/D add each cylinder's
+CL-minus-h IVP phase comparisons. These evaluations retain both cylinders and
+aggregate across VR/L/D using the existing suite output folders.
+
+The batch uses the project virtual environment. A failed fit skips its suite;
+subsequent experiments continue after fit or evaluation failures. The final
+exit code is nonzero if any command failed. Matching fits, evaluation tables
+and 300-DPI figures overwrite their existing files. Running the batch performs
+training as well as evaluation; it is not a summary-only plotting command.
+
+# Single-cylinder experiment batch
+
+From the repository root, run `run_single.bat` to fit and evaluate the 122
+configurations in its commented Parts A–F checklist. The batch uses the project
+virtual environment and continues after errors. A failed fit skips that fit's
+evaluation suite; the batch returns a nonzero exit code at the end if any fitting
+or evaluation command failed.
+
+To regenerate figures using existing fitted models, run `run_single_suite.bat`.
+It enables all 122 suite evaluations from Parts A–F, including the entries that
+are currently commented out in `run_single.bat`. It recomputes derivative
+predictions and IVPs using saved coefficients and overwrites matching evaluation
+reports and figures. Requirements are the project virtual environment, raw CSVs,
+and matching `model.csv`/`training.json` files; training settings and window JSONs
+must identify those saved fits. Previously generated raw-data diagnostics are
+not required. Failed suites are counted and subsequent evaluations continue;
+the batch returns a nonzero exit code at the end if any suite failed.
+
+`script/evaluate_sindy_single_suite.py` evaluates one already fitted experiment.
+Its `--fit_window_case` identifies training, while `--derivative_window_cases`
+and `--integral_window_case` supply per-VR evaluation bounds. Parametric fits use
+`--parameterization vr`, `--input_feature_library_case`, and an explicit
+`--training_vr_list` independent of the evaluation VR selection. For example:
+
+```powershell
+python script/evaluate_sindy_single_suite.py --dynamics_case 3 --vr_list 3 4 5 6 7 8 --differentiator_case configs/differentiator/finite_difference_basic.json --state_feature_library_case configs/feature_library/polynomial_1.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/sinusoidal.json --derivative_window_cases configs/fit_window/single/overall_reduced.json configs/fit_window/single/sinusoidal.json configs/fit_window/single/sinusoidal_evaluation.json --integral_window_case configs/fit_window/single/sinusoidal_evaluation.json --spectral_window_cases configs/fit_window/single/sinusoidal.json configs/fit_window/single/sinusoidal_evaluation.json --weight_heatmap
+```
+
+The suite saves derivative time comparisons for all three windows and standard
+IVP comparisons for the evaluation window. Cases 4/5 additionally run the coupled
+structural/lift IVP. Native SciPy events stop at `--max_state_factor` times each
+reference state's maximum absolute value (default 10); existing partial-trajectory
+reports and both time-series views are preserved.
+
+Summary heatmaps have VR columns and state/derivative rows, with N/A for incomplete
+IVPs and unavailable normalized errors. Frequency and amplitude curves compare
+model and reference across VR, using only complete IVPs. Frequencies and FFT
+amplitudes use a rectangular window; time-series amplitude is half the selected
+signal range. Per-VR FFT comparison plots display f*=0..2 without phase panels.
+`--phase_comparison` additionally plots CL-minus-h phase for Case 1/2 IVPs, using
+the same reference-displacement peak bin for both channels and both signals.
+
+Summaries live inside the existing fitting chain under
+`evaluation/summary/reference=.../evaluation_window=.../VR=.../fit_window=.../time=.../`.
+Per-VR spectral/amplitude tables live under that model's
+`evaluation/VR = .../analysis/time=.../evaluation_window=.../`. JSON companions
+include completion status, solver diagnostics, actual intervals, and source
+reports. Matching runs overwrite matching summaries. Every figure is 300 dpi;
+error and coefficient heatmaps omit titles. Frequency/amplitude trend plots have
+descriptive titles and variable-only y-axis labels. `--weight_heatmap` supports
+individual and parameterized Case 3 fits and plots every response feature in
+the hddot equation, preserving signed small coefficients. For parameterized
+models, coefficients are evaluated at each selected VR/L/D using the saved
+parameter feature library; no model is refitted. Single-cylinder runs save one
+map across the selected VR cases. Parameterized tandem runs save separate
+hddot0 and hddot1 heatmaps at each L/D, matching individual-model reports.
+
+All coefficient heatmaps label the colorbar **Coefficient**. In addition to
+the effective VR maps, VR-parameterized models save
+`coefficients/hddot_tensor_coefficients_heatmap.png` with CSV and
+`hddot_tensor_coefficients_summary.json` companions. These retain the fitted
+tensor features (including VR powers) without substituting parameter values.
+Single-cylinder models have one `SINDy` column. Tandem VR models save separate
+`hddot0_tensor_coefficients_heatmap.png` and
+`hddot1_tensor_coefficients_heatmap.png` files, each with one column per L/D
+and full tensor terms in its rows; CSV/JSON companions are separate as well.
+The JSON records the original feature names and source model CSVs. The existing
+`--weight_heatmap` flag remains supported; generated filenames use
+`coefficients` instead of `weights`. Cell annotations use three decimals and
+8-point text, with signed less-than labels below magnitude 0.001. CSV/JSON
+values retain full precision.
+
+The strict van der Pol acceleration library already has maximum degree three.
+The separate `case4_single_selected_polynomial_4_vdp_acceleration.json` label
+retains the same allowed terms for the checklist's degree-four restriction.
+
+## Tandem evaluation suite
+
+Manually specified coefficient CSVs can be assessed without training metadata
+through `evaluate_two_tandem_suite(..., model_directories=...)`. The mapping must
+cover every selected `(L/D, VR)` pair. Each directory must contain `model.csv`;
+explicit library descriptors still validate every feature and target name.
+For folders without `training.json`, fit/training selectors are omitted from
+model lookup. The supplied fit-window name labels the report and does not imply
+that the manual model was fitted. Original coefficient CSVs are never rewritten.
+
+`run_theoretical_two_tandem.bat` evaluates the five manually entered theoretical
+VR models under `.../input_polynomial_2/theoretical/LpD=<value>/fit_window=overall_reduced/`.
+It covers VR 5-14 and L/D 1.5, 2, 3, 3.5 and 4 with the usual Case 3 suite:
+three derivative windows, sinusoidal-evaluation IVPs, FFT/amplitude assessments,
+effective coefficient maps per L/D and the aggregate map retaining VR terms.
+Use `--dry-run` to validate model names/windows without evaluating trajectories.
+Reports are saved under the theoretical model tree's `evaluation` directories;
+status/hash manifests go to `state/theoretical_evaluation_runs` by default.
+The `--after_study` option requires all predecessor stages to have finished.
+
+`script/evaluate_sindy_two_tandem_suite.py` provides the same diagnostics for both
+tandem cylinders. It defaults to VR=5..14 and L/D=1.5,2,3,3.5,4. Use `--vr_list`
+and `--lpd_list` for smaller selections. Fit the models first, then run, for example:
+
+```powershell
+python script/evaluate_sindy_two_tandem_suite.py --dynamics_case 3 --vr_list 5 6 7 8 9 10 11 12 13 14 --lpd_list 1.5 2 3 3.5 4 --differentiator_case configs/differentiator/finite_difference_basic.json --state_feature_library_case configs/feature_library/polynomial_1.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/two_tandem/sinusoidal.json --derivative_window_cases configs/fit_window/two_tandem/overall_reduced.json configs/fit_window/two_tandem/sinusoidal.json configs/fit_window/two_tandem/sinusoidal_evaluation.json --integral_window_case configs/fit_window/two_tandem/sinusoidal_evaluation.json --spectral_window_cases configs/fit_window/two_tandem/sinusoidal.json configs/fit_window/two_tandem/sinusoidal_evaluation.json --weight_heatmap
+```
+
+The suite supports `--parameterization individual`, `vr`, `lpd`, and `vr_lpd`.
+Parametric models require `--input_feature_library_case`. The independent training
+selectors are `--training_vr_list` and `--training_lpd_list`: VR models default to
+the selected VR list, L/D models default to the selected L/D list, and joint models
+default to both. Give the original training lists when evaluating a held-out VR or
+L/D. Standard and coupled IVPs use the cylinder-specific physical mass ratio.
+
+The common summary folder includes both L/D and VR selections. Inside it, each
+`LpD = ...` folder contains VR-by-variable NRMSE heatmaps and frequency/amplitude
+curves. The common folder also contains VR-by-L/D error heatmaps for each variable.
+These per-variable IVP heatmaps (standard and coupled integral evaluation) use
+28% larger figure width and height to give the cell values more room. Rerun the
+suite or `plot_error_heatmap_sindy_ivp.py` to regenerate them from evaluation results.
+`--phase_comparison` on Cases 1/2 produces separate h–CL phase comparisons for
+cylinders 0 and 1, each using its own reference displacement peak frequency.
+For individual Case 3 models, `--weight_heatmap` saves `hddot0_coefficients_heatmap.png`
+and `hddot1_coefficients_heatmap.png` under `coefficients/LpD = .../`, with matching CSV
+and source-model JSON files. Cross-cylinder feature coefficients remain in their
+appropriate target equation. Parameterized Case 3 models likewise save
+`hddot0_coefficients_heatmap.png` and `hddot1_coefficients_heatmap.png` per L/D,
+with response-term rows and selected VR columns. VR-parameterized models also
+save `coefficients/hddot0_tensor_coefficients_heatmap.png` and
+`hddot1_tensor_coefficients_heatmap.png` across all selected L/D values,
+retaining VR terms separately for each acceleration equation, plus CSV/JSON
+companions. Partial IVPs are N/A and omitted from spectral trends;
+per-case folders include L/D to prevent overwrites. All figures are 300 dpi and
+aggregate titles follow the same rules as the single-cylinder suite.
+
+Suite heatmaps use square cells, visible borders, grid lines, and numeric cell
+annotations, matching the diagnostic heatmaps. Inner grid lines are 0.6 pt,
+with 0.8-pt black outer spines across all heatmaps. Custom inner widths are
+capped at the outer spine width. All suite comparison curves use
+the diagnostic line width (0.6 pt): reference is solid and SINDy is dashed at the
+same width. Frequency and amplitude trend y labels show only the variable, including
+its cylinder index. Their titles are `Dominant Frequency (variable)`,
+`Amplitude, Peak-to-Peak`, and `Amplitude, Dominant FFT`. The peak-to-peak amplitude
+continues to mean half the signal range. Phase curves retain normalization by pi and use
+y limits [-1.05, 1.05]. Rerun the evaluation or plotting commands to refresh PNGs.
+NRMSE cell annotations use scientific notation for nonzero values below 0.01.
+Cells enlarge as needed to fit the annotations at the standard font size.
+
+## Filtered single-cylinder experiment runner
+
+Run from the repository root:
+
+```powershell
+.\run_new_single.bat --dry-run
+.\run_new_single.bat
+```
+
+The Parts A-F catalog contains 41 experiments. Currently 20 experiments
+(40 commands) are active: A01-A04, B01-B04, C01-C04, D01-D04 and E01-E04.
+All of F and E05-E08 are on hold, preserved as `REM ON HOLD` calls. Each
+active fit is immediately followed by its matching evaluation suite.
+The original notes are preserved in `old_run/run_new_single_checklist.txt`.
+All experiments use VR 3-8 and `finite_difference_basic.json` (order 2).
+Filtering uses `butterworth_single_flim2.json` for every experiment.
+The batch uses this checkout's `.venv` and source code, and keeps the existing
+filter/config/training-window result paths.
+
+| Part | Catalog experiments | Models and variations |
+| --- | ---: | --- |
+| A | 4 | Individual Case 3, polynomial degree 1; Butterworth, OLS and vanilla STLSQ with both training windows; hddot coefficient heatmaps |
+| B | 4 | Case 3 parameterized by VR with degree 2; Butterworth, OLS and vanilla STLSQ with both training windows; effective hddot coefficient heatmaps |
+| C | 4 | Individual Case 1, state degrees 1-4; Butterworth, OLS, sinusoidal training; IVP h/CL phase comparisons |
+| F01-F06 | 6 | VR-parameterized Case 1, immediately after C; state degrees 2/3 crossed with VR degrees 2/3/4 |
+| D | 4 | The Part C settings for Case 2 |
+| F07-F12 | 6 | VR-parameterized Case 2, immediately after D; state degrees 2/3 crossed with VR degrees 2/3/4 |
+| E | 7 | Individual Case 4, OLS degrees 1-4 and three held restricted libraries; standard and coupled IVPs |
+| F13-F18 | 6 | VR-parameterized Case 4, immediately after E; state degrees 2/3 crossed with VR degrees 2/3/4 |
+
+Parts A/B use both OLS (`ols`: alpha=0, threshold=0) and vanilla STLSQ
+(`stlsq_vanilla_basic`: alpha=0, threshold=0.1). Parts C-E use OLS only.
+Column normalization is off. All active fits use Butterworth filtering.
+Held calls retain their previous optimizer settings; the tandem runner
+uses OLS/vanilla STLSQ for A/B and OLS degrees 2-4 for C-E.
+A01-A02 and B01-B02 use OLS; A03-A04 and B03-B04 use vanilla STLSQ.
+Each pair uses `overall_reduced` then `sinusoidal` training. A/B use state
+polynomial degree 1, and B uses VR polynomial degree 2. C/D retain C01-C04 and D01-D04 only. E retains E01-E06 and E08.
+All C/D/E/F experiments use Butterworth filtering and sinusoidal training.
+Existing IDs remain, with A03-A04 and B03-B04 added for vanilla STLSQ. Execution order is A, B, C, F01-F06,
+D, F07-F12, E, F13-F18. The 18 parameterized experiments retain their
+original settings and follow their corresponding individual dynamics cases.
+
+E05/E06 use the existing `case4_single_selected_polynomial_3_symmetric_only`
+and `case4_single_selected_polynomial_3_no_hCL` libraries. E08 uses
+`wake_case4_vdp_acceleration_single` (linear hddot coupling),
+with linear restoring and van der Pol damping.
+
+Every suite evaluates derivatives on `overall_reduced`, `sinusoidal`, and
+`sinusoidal_evaluation`. Standard IVPs use `sinusoidal_evaluation`; Case 4
+also runs the structural/lift coupled IVP. Frequency and amplitude comparisons
+use rectangular FFT windows, with per-VR FFT displays limited to f*=0..2.
+Derivative spectral comparisons use only `sinusoidal` and
+`sinusoidal_evaluation`. Amplitude trends include half peak-to-peak and
+dominant FFT amplitudes. Partial IVPs are N/A in the title-free NRMSE heatmaps
+and omitted from spectral trends. Parts A/B additionally save the signed hddot
+coefficient heatmaps; Parts C/D additionally save IVP CL-minus-h phases.
+
+Only the active calls execute. Preflight checks verify required scripts/configs.
+Failed fits skip their matching evaluations; failed evaluations do not stop
+later fits. The final summary lists failed experiment stages and skipped
+evaluations, with a nonzero exit code if any command failed. Matching outputs
+are overwritten. Edit `SINDY_VRS`, `SINDY_IVP_METHOD`, or
+`SINDY_MAX_STATE_FACTOR` near the top to change those settings.
+
+## Filtered two-tandem-cylinder experiment runner
+
+```powershell
+.\run_new_two_tandem.bat --dry-run
+.\run_new_two_tandem.bat
+```
+
+The tandem runner contains 17 active configurations and 34 fit/evaluation
+commands: OLS and vanilla STLSQ for A/B, and OLS degrees 2-4 for C-E. Part F and E05-E08 remain on hold. It includes both
+cylinders for every combination of VR 5-14 and L/D 1.5, 2, 3, 3.5 and 4.
+Parts A/B have four experiments each, C/D have three active experiments each,
+and E has three active experiments plus three held restricted libraries. F has
+eighteen held experiments, split into groups following C, D and E. Vanilla
+STLSQ uses alpha=0 and threshold=0.1.
+
+All experiments use `finite_difference_basic.json`, with
+`butterworth_two_tandem_flim2.json` for filtering.
+Fitting and evaluation windows come from `configs/fit_window/two_tandem/`.
+Individual fits produce one model per L/D/VR pair; Parts B/F fit a
+VR-parameterized model separately at each L/D, retaining the selected
+training VR list when resolving saved models.
+
+Every fit is followed by `evaluate_sindy_two_tandem_suite.py`. Derivative
+evaluation covers `overall_reduced`, `sinusoidal` and
+`sinusoidal_evaluation`; IVPs use `sinusoidal_evaluation`. Spectral
+comparisons cover the two sinusoidal windows. Parts A/B retain the Case 3
+coefficient heatmaps: separate acceleration targets for individual models,
+and separate acceleration-target effective-coefficient maps per L/D for parameterized models.
+Parts C/D include CL-minus-h phase comparisons for both cylinders. Case 4
+suites also evaluate the coupled structural/lift IVP.
+
+Part E uses tandem response libraries with the canonical ten-channel Case 4
+ordering. E05 uses
+`case4_two_tandem_selected_polynomial_3_symmetric_only.json`, retaining
+linear and cubic terms plus the bias. E06 uses
+`case4_two_tandem_selected_polynomial_3_no_hCL.json`, retaining separate
+wake-only and motion-only polynomials through degree three and excluding
+mixed wake/motion products. These allow products within each group across
+cylinders. E08 uses `wake_case4_vdp_acceleration_two_tandem.json`, retaining
+linear restoring and van der Pol damping for both cylinders, with no
+additional inter-cylinder product features.
+
+The runner uses this checkout's `.venv`, validates scripts/configs before
+fitting, and continues after failures. A failed fit skips its suite; the
+final summary lists failed stages and skipped evaluations. Matching outputs
+use the existing tandem filtering/model/window folder conventions.

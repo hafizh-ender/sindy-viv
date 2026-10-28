@@ -5,6 +5,21 @@
 The standard function selects loading, preparation, fitting, and saving with
 explicit `if`/`elif` branches for `cylinder_type` and `parameterization`.
 
+## Functions and dependencies
+
+| Module | Function | Role |
+| --- | --- | --- |
+| `functions.py` | `compute_sindy` | Prepare full trajectories, crop fitting windows, construct response/parameter libraries and optimizers, call generic pointwise fitting, and save model metadata. |
+| `weak_functions.py` | `compute_weak_sindy` | Use the same physical preparation and grouping, build temporal weak equations, and save a pointwise model with its weak-setting identity. |
+
+Both functions load named channels through `case_bryan.input`, use
+`prepare_sindy.trajectory.prepare_trajectory` and `prepare_sindy.optimizer.prepare_optimizer`, and construct paths
+through [model_storage](../model_storage/README.md). Numerical fitting delegates
+to `sindy.functions.perform_sindy` or `perform_weak_sindy`; it is reusable with
+non-Bryan arrays. Saved `model.csv` and `training.json` are later consumed by
+[evaluation](../evaluate_sindy/README.md). The selection table and examples below
+describe the API return keys and configuration combinations.
+
 | `cylinder_type` | `parameterization` | Fit | Return value |
 | --- | --- | --- | --- |
 | `single` | `individual` | One model per VR | `{vr: model}` |
@@ -18,6 +33,15 @@ The computation package is `sindy_viv.case_bryan.compute_sindy`. The scripts are
 in the repository's existing `script/` directory.
 
 ## Standard SINDy
+
+Standard and weak fits accept `filtering_case` (CLI: `--filtering_case`), with
+SciPy Savitzky-Golay, Butterworth, and moving-average presets in
+[`configs/filtering`](../../../../configs/filtering/README.md).
+Filtering runs on full loaded measurements before differentiation and cropping.
+The config stem adds `filtering=<stem>` before the differentiator folder in
+saved-model paths; `training.json` snapshots its settings. Use the same option
+in evaluation to select the model and filter its reference data. Omit the option
+to retain the existing unfiltered behavior and paths.
 
 All six workflows support `dynamics_case=1` through `5`:
 
@@ -35,8 +59,11 @@ VR, L/D, or `[L/D, V_R]`; controls do not become parameters. The fitted model re
 controls before constant parameters in its `u` arrays.
 
 All differentiation uses the loader's tau without dividing
-by VR again. Cases 2, 4 and 5 differentiate lift rates with the supplied
-differentiator; case 4 loads the recorded acceleration channel as a control.
+by VR again. Cases 2, 4 and 5 construct lift-rate states with the supplied
+first differentiator. Their lift-acceleration targets use native second
+derivatives of filtered lift when supported (FD `d=2`, SG `deriv=2`), with
+repeated first differentiation as the fallback for other callables or
+unsupported settings. Case 4 loads the recorded acceleration channel as a control.
 Case 5 omits that channel entirely and needs only measured h, hdot and CL.
 
 For Case 5, `case5_single_lift3_motion1.json` combines cubic lift terms with

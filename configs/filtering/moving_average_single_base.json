@@ -1,0 +1,8 @@
+{
+    "module": "sindy_viv.case_bryan.prepare_sindy.filtering",
+    "class_name": "MovingAverageFilter",
+    "kwargs": {
+        "window_length": 87,
+        "mode": "reflect"
+    }
+}

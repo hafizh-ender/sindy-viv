@@ -42,6 +42,12 @@ RE = 200
 Data Loading and Preprocessing Functions
 """
 def load_data(vr, lpd, dtype=np.float64):
+    """Read this archived workflow's physical-case CSVs as pandas DataFrames.
+
+    Use the requested VR and, for tandem data, L/D with the module's historical
+    file/dtype conventions. Return channel tables in this script's loader order;
+    current package loaders provide the maintained array-based interface.
+    """
     drag_object_0 = pd.read_csv(f"{DATA_DIR}/LpD = {lpd}/VR = {vr}/{DRAG_FILENAME_OBJECT_0}", dtype=dtype)
     drag_object_1 = pd.read_csv(f"{DATA_DIR}/LpD = {lpd}/VR = {vr}/{DRAG_FILENAME_OBJECT_1}", dtype=dtype)
     
@@ -60,11 +66,11 @@ def load_data(vr, lpd, dtype=np.float64):
     return (drag_object_0, drag_object_1, lift_object_0, lift_object_1, normalized_displacement_object_0, normalized_displacement_object_1, normalized_velocity_object_0, normalized_velocity_object_1, normalized_acceleration_object_0, normalized_acceleration_object_1)
 
 def solve_time_duplicates(t, h, h_dot, h_ddot, cl, cd, strategy='uniform', dt=None):
-    """
-        strategy: 
-        - 'uniform'
-        - 'mean'
-        - 'first'
+    """Return aligned time/signal arrays after applying the chosen timestamp strategy.
+
+    mean averages duplicate times, first keeps their first rows, and uniform
+    replaces times with first_time + row_index*dt without resampling signals.
+    The uniform strategy requires dt; output signal order follows input order.
     """
     # Create a DataFrame to hold the data
     df = pd.DataFrame({
@@ -102,6 +108,11 @@ def solve_time_duplicates(t, h, h_dot, h_ddot, cl, cd, strategy='uniform', dt=No
 Formatting Functions
 """
 def add_dot_text(feature_names):
+    """Return derivative labels by increasing each variable's LaTeX dot order.
+
+    Keep subscripts intact; this historical helper names derivative columns
+    and does not numerically differentiate samples.
+    """
     feature_names_with_dot = []
     for name in feature_names:        
         if name.startswith('\\dot{'):
@@ -121,17 +132,32 @@ def add_dot_text(feature_names):
     return feature_names_with_dot
 
 def kwargs_to_string(kwargs):
+    """Encode nested option dictionaries as the archived output-name convention.
+
+    Preserve mapping iteration order and recursively bracket nested settings;
+    return a string without creating files.
+    """
     return '-'.join([f"{key}{value}" if not isinstance(value, dict) else f"{key}[{kwargs_to_string(value)}]" for key, value in kwargs.items()])
 
 """
 Metrics Functions
 """
 def normalized_root_mean_squared_error(input, target):
+    """Return RMSE divided by target standard deviation, expressed as a percentage.
+
+    This archived metric uses percent units; maintained metrics use their
+    documented ratio convention. Zero target deviation follows NumPy division.
+    """
     rmse = np.sqrt(np.mean((input - target)**2))
     nrmse = rmse / (np.std(target)) * 100
     return nrmse
 
 def relative_l2_error(input, target):
+    """Return prediction-error L2 norm divided by target L2 norm, as a percentage.
+
+    This archived helper does not guard zero target norm; current numerical
+    metrics define their own degenerate-signal handling.
+    """
     l2_error = np.linalg.norm(input - target)
     relative_l2_error = l2_error / np.linalg.norm(target) * 100
     return relative_l2_error
@@ -140,6 +166,12 @@ def relative_l2_error(input, target):
 Plotting Functions
 """
 def plot_full(t, X_true_df, feature_names, vr, lpd, X_pred_df=None, xlim='auto', t_stat_start=0, t_stat_end=None, nrmse_dict=None):
+    """Return a stacked legacy time-history figure and its axes.
+
+    Overlay optional predictions by column name, use the requested statistics
+    interval for symmetric y limits, and add supplied legacy NRMSE annotations.
+    The caller is responsible for saving/showing and closing the figure.
+    """
     if t_stat_end is None:
         t_stat_end = t[-1]
     
@@ -195,6 +227,12 @@ def plot_full(t, X_true_df, feature_names, vr, lpd, X_pred_df=None, xlim='auto',
 
 def __main__():
     # Check current directory
+    """Run this archived script's command-line data and reporting workflow.
+
+    Parse its historical configuration options, load the requested datasets,
+    and write outputs using module-local conventions. Maintained entry points
+    in the parent script directory delegate to reusable package functions.
+    """
     current_dir = os.getcwd()
     print(f"Current Directory: {current_dir}")
     
@@ -202,7 +240,9 @@ def __main__():
     print(f"pysindy version: {ps.__version__}")
     
     # Argparse for command line arguments
-    parser = argparse.ArgumentParser(description="")
+    parser = argparse.ArgumentParser(
+        description='',
+    )
     parser.add_argument(
         '--vr_list',
         nargs='+',
@@ -242,32 +282,35 @@ def __main__():
         '--save_dir',
         type=str,
         default='./results',
-        help='Directory to save the results.'
+        help='Directory to save the results.',
     )
     parser.add_argument(
         '--num_closeups',
         type=int,
         default=0,
-        help='Number of close-up plots to generate for each VR. If 0, no close-ups are generated.'
+        help='Number of close-up plots to generate for each VR. If 0, no close-ups are generated.',
     )
     parser.add_argument(
         '--closeup_xlims',
         nargs='+',
         type=float,
         default=None,
-        help='X-axis limits for the close-up plots. Provide pairs of values: min1 max1 min2 max2 ...'
+        help=(
+            'X-axis limits for the close-up plots. Provide pairs of values: min1 max1 min2 max2 '
+            '...'
+        ),
     )
     parser.add_argument(
         '--generate_state_plots',
         action='store_true',
         default=False,
-        help='Generate plots for the state variables.'
+        help='Generate plots for the state variables.',
     )
     parser.add_argument(
         '--generate_derivative_plots',
         action='store_true',
         default=False,
-        help='Generate plots for the true and estimated derivatives.'
+        help='Generate plots for the true and estimated derivatives.',
     )
 
     args = parser.parse_args()
@@ -533,6 +576,11 @@ def __main__():
                 lhs_rows, rhs_values = [], []
                 
                 def pin(target_idx, feature_idx, value):
+                    """Append one target-major coefficient equality to the enclosing constraint lists.
+
+                    Set the selected flattened coefficient to value; mutate lhs_rows and
+                    rhs_values for the subsequent historical ConstrainedSR3 construction.
+                    """
                     lhs = np.zeros(n_features * n_targets)
                     lhs[target_idx * n_features + feature_idx] = 1
                     lhs_rows.append(lhs)

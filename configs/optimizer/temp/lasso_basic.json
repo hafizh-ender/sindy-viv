@@ -1,0 +1,10 @@
+{
+    "module": "sklearn.linear_model",
+    "class_name": "Lasso",
+    "kwargs": {
+        "alpha": 1e-3,
+        "fit_intercept": false,
+        "max_iter": 10000,
+        "tol": 1e-6
+    }
+}

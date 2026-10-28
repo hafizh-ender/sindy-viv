@@ -58,6 +58,7 @@ def compute_sindy(
     dtype: DTypeLike = np.float64,
     constraint_mstar: float | None = None,
     fit_window_case: str | PathLike[str] | None = None,
+    filtering_case: str | PathLike[str] | None = None,
 ) -> ps.SINDy | dict[float | tuple[float, float], ps.SINDy]:
     """Fit individual, VR-only, L/D-only, or joint L/D-VR SINDy models.
 
@@ -87,6 +88,7 @@ def compute_sindy(
         constraint_mstar (float or None): Mass ratio for physical constraints in the optimizer (optional, defaults to case-specific value). Default: None
 
         fit_window_case (str, PathLike[str], or None): JSON path containing trajectory windows keyed by VR (single) or LpD then VR (tandem); None selects the cylinder-specific overall.json. Default: None
+        filtering_case (str, PathLike[str], or None): Optional smoothing config applied to full measured records before differentiation. Default: None
 
     Returns:
         A fitted SINDy for single-cylinder VR or joint LpD-VR fitting.
@@ -172,6 +174,8 @@ def compute_sindy(
             fit_mode = "parametric_vr_lpd"
 
     differentiator_config = load_config(differentiator_case)
+    filtering_config = load_config(filtering_case) if filtering_case is not None else None
+    filtering = initiate_object(**filtering_config) if filtering_case is not None else None
     optimizer_config = load_config(optimizer_case)
     models = {}
     for lpd, vr in trajectory_groups:
@@ -202,7 +206,10 @@ def compute_sindy(
                 time, data = load_data_two_tandem_cylinders(
                     re, mstar, trajectory_vr, trajectory_lpd, dtype=dtype, variables=variable_names,
                 )
-            trajectory = prepare_trajectory(time, data, variable_names, differentiator, dynamics_case, cylinder_type, dtype=dtype)
+            trajectory = prepare_trajectory(
+                time, data, variable_names, differentiator, dynamics_case, cylinder_type,
+                dtype=dtype, filtering=filtering,
+            )
             del time, data
             if parameterization == "vr":
                 trajectory = trajectory.with_parameters((trajectory_vr,), parameter_names)
@@ -255,6 +262,7 @@ def compute_sindy(
             results_root, case_name, dynamics_case, Path(differentiator_case).stem, fit_mode,
             cylinder_type, parameterization, state_feature_library_case,
             input_feature_library_case, optimizer_case, re, mstar, vr, lpd,
+            filtering_case=filtering_case,
         )
         results_dir = training_directory(results_dir, parameterization, training_trajectories, fit_window_case)
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -280,6 +288,12 @@ def compute_sindy(
         }
         if parameterization != "individual":
             training_metadata['configurations']['parameter_feature_library'] = input_library_config
+        if filtering_case is not None:
+            training_metadata['configurations']['filtering'] = filtering_config
+            training_metadata['filtering'] = {
+                'name': Path(filtering_case).stem, 'source': str(filtering_case),
+                'scope': 'full measured trajectory before differentiation and cropping',
+            }
 
         # Snapshot the full config as well as each model's resolved trajectory bounds.
         training_metadata['fit_window'] = {

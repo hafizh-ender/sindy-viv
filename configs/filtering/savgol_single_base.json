@@ -1,0 +1,9 @@
+{
+    "module": "sindy_viv.case_bryan.prepare_sindy.filtering",
+    "class_name": "SavgolFilter",
+    "kwargs": {
+        "window_length": 867,
+        "polyorder": 3,
+        "mode": "interp"
+    }
+}

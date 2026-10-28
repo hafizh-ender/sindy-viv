@@ -73,11 +73,21 @@ class _TemporalWeakPDELibrary(ps.WeakPDELibrary):
     """
 
     def __init__(self, time: np.ndarray, rng: np.random.Generator, **kwargs: Any):
+        """Configure temporal weak integration with a caller-owned random generator.
+
+        The time grid and remaining WeakPDELibrary settings determine integration
+        windows; the identity integrand preserves prepared feature-column order.
+        """
         self.rng = rng
         self.time = time
         super().__init__(function_library=ps.IdentityLibrary(), spatiotemporal_grid=time, **kwargs)
 
     def _set_up_weights(self) -> None:
+        """Populate PySINDy integration weights on feasible temporal windows.
+
+        Sample centers with the local generator and use analytic piecewise-linear
+        weights, retaining the arrays expected by weak feature/target integration.
+        """
         centers = _sample_centers(self.time, float(self.H_xt[0]), self.K, self.rng)
         self.inds_k, self.fullweights0, self.fulltweights, self.fullweights1 = [], [], [], []
         for center in centers:

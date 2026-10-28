@@ -65,12 +65,15 @@ def compute_weak_sindy(
     constraint_mstar: float | None = None,
     fit_window_case: str | PathLike[str] | None = None,
     weak_feature_library_case: str | PathLike[str] | None = None,
+    filtering_case: str | PathLike[str] | None = None,
 ) -> ps.SINDy | dict[float | tuple[float, float], ps.SINDy]:
     """Fit weak dynamics for Cases 1-5 and all cylinder/parameter selections.
 
     The selectors, return mapping, libraries, optimizers and artifact formats
     match compute_sindy. Only Cases 2/4/5 require differentiator_case, to build
     lift-rate states on full trajectories; weak targets are never differentiated.
+    filtering_case optionally smooths all loaded measurements before lift-rate
+    construction and cropping, with a separate config-named results folder.
     tweak0/tweakf select inclusive recorded t* bounds (None means open ends).
     Alternatively fit_window_case supplies per-trajectory bounds; do not combine
     it with tweak0/tweakf. Time remains float64 tau=t*/VR throughout fitting.
@@ -179,6 +182,8 @@ def compute_weak_sindy(
             trajectory_groups = [(None, None)]
             fit_mode = "parametric_vr_lpd"
 
+    filtering_config = load_config(filtering_case) if filtering_case is not None else None
+    filtering = initiate_object(**filtering_config) if filtering_case is not None else None
     differentiator_config = load_config(differentiator_case) if layout.rate_names else None
     optimizer_config = load_config(optimizer_case)
     models = {}
@@ -212,7 +217,7 @@ def compute_weak_sindy(
                 )
             trajectory = prepare_trajectory(
                 time, data, variable_names, differentiator, dynamics_case, cylinder_type,
-                dtype=dtype, with_derivatives=False,
+                dtype=dtype, with_derivatives=False, filtering=filtering,
             )
             del time, data
             if parameterization == "vr":
@@ -268,6 +273,7 @@ def compute_weak_sindy(
             cylinder_type, parameterization, state_feature_library_case,
             input_feature_library_case, optimizer_case, re, mstar, vr, lpd,
             weak_feature_library_case=weak_feature_library_case,
+            filtering_case=filtering_case,
         )
         results_dir = training_directory(results_dir, parameterization, training_trajectories, fit_window_case)
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -296,6 +302,12 @@ def compute_weak_sindy(
         training_metadata['weak_feature_library_source'] = str(weak_feature_library_case)
         if parameterization != "individual":
             training_metadata['configurations']['parameter_feature_library'] = input_library_config
+        if filtering_case is not None:
+            training_metadata['configurations']['filtering'] = filtering_config
+            training_metadata['filtering'] = {
+                'name': Path(filtering_case).stem, 'source': str(filtering_case),
+                'scope': 'full measured trajectory before differentiation and cropping',
+            }
 
         if fit_window_case is not None:
             training_metadata['fit_window'] = {

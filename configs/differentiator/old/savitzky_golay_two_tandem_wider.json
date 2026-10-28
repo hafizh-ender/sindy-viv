@@ -1,0 +1,9 @@
+{
+    "module": "sindy_viv.differentiation",
+    "class_name": "SavitzkyGolayDerivative",
+    "kwargs": {
+        "window_length": 347,
+        "polyorder": 3,
+        "deriv": 1
+    }
+}

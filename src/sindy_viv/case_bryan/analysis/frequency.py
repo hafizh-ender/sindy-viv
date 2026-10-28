@@ -113,6 +113,29 @@ def complete_frequency_analysis(*args: Any, **kwargs: Any) -> FrequencyAnalysis:
     return compute_frequency_analysis(*args, **kwargs)
 
 
+def compute_phase_difference(analysis: FrequencyAnalysis, signal: str, reference: str) -> dict[str, Any]:
+    """Return signal-minus-reference phase at the reference's dominant FFT bin.
+
+    Both phases must use the same frequency. Subtracting independently selected
+    dominant phases would not give a relative phase when those peaks differ.
+    Wrap the difference into [-pi, pi]; positive values mean the signal leads
+    the reference under the cosine convention. Undefined phases remain None.
+    """
+    signal_column = analysis.variable_names.index(signal)
+    reference_column = analysis.variable_names.index(reference)
+    peak = int(analysis.peak_indices[reference_column])
+    result = dict(signal=signal, reference=reference, frequency=None, bin=None,
+                  phase_difference_rad=None, phase_difference_over_pi=None)
+    if peak < 0:
+        return result
+    result.update(frequency=float(analysis.frequencies[peak]), bin=peak)
+    phases = analysis.phases[peak, [signal_column, reference_column]]
+    if np.all(np.isfinite(phases)):
+        difference = float(np.angle(np.exp(1j*(phases[0]-phases[1]))))
+        result.update(phase_difference_rad=difference, phase_difference_over_pi=difference/np.pi)
+    return result
+
+
 def dominant_frequency_analysis(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """Return only the dominant-bin summary and analysis metadata of supplied arrays."""
     return compute_frequency_analysis(*args, **kwargs).summary()

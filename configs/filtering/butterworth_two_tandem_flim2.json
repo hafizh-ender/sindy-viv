@@ -1,0 +1,10 @@
+{
+    "module": "sindy_viv.case_bryan.prepare_sindy.filtering",
+    "class_name": "ButterworthFilter",
+    "kwargs": {
+        "cutoff": 0.0115470108,
+        "order": 4,
+        "btype": "lowpass",
+        "normalized": true
+    }
+}

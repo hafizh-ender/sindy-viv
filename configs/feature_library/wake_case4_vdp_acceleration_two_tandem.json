@@ -1,0 +1,12 @@
+{
+  "module": "sindy_viv.case_bryan.feature_library",
+  "class_name": "WakeOscillatorCase4Library",
+  "kwargs": {
+    "cylinder_type": "two_tandem",
+    "restoring": "linear",
+    "damping": "van_der_pol",
+    "coupling": ["acceleration"],
+    "inter_cylinder_degree": 0,
+    "include_bias": false
+  }
+}

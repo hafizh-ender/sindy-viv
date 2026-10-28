@@ -42,6 +42,7 @@ def model_base_directory(
     lpd: float,
     *,
     weak_feature_library_case: str | PathLike[str] | None = None,
+    filtering_case: str | PathLike[str] | None = None,
 ) -> Path:
     """Build the shared model path before dataset/window folders.
 
@@ -51,6 +52,8 @@ def model_base_directory(
     fitting windows are appended by training_directory.
     Weak fits insert the weak-library config stem immediately after fit_mode;
     None selects the default weak-library label, "default".
+    Filtering inserts filtering=<config-stem> before the differentiator folder;
+    omitting it preserves the existing unfiltered paths.
 
     Parameters:
         results_root (str or PathLike[str]): Root directory for fitted models and evaluation artifacts.
@@ -70,8 +73,12 @@ def model_base_directory(
         vr (float): Reduced velocity for this trajectory or fixed-VR model.
         lpd (float): Cylinder spacing L/D; None denotes the single-cylinder configuration.
         weak_feature_library_case (str, PathLike[str], or None): Weak-library config path identifying weak fits; only its stem is used. Default: None
+        filtering_case (str, PathLike[str], or None): Optional filtering config path whose stem identifies the preprocessing folder. Default: None
     """
-    directory = Path(results_root) / case_name / f"dynamics_case_{dynamics_case}" / differentiator_name / fit_mode
+    directory = Path(results_root) / case_name / f"dynamics_case_{dynamics_case}"
+    if filtering_case is not None:
+        directory /= 'filtering=' + Path(filtering_case).stem
+    directory = directory / differentiator_name / fit_mode
     if fit_mode.startswith('weak_'):
         directory /= Path(weak_feature_library_case or 'default.json').stem
     if parameterization == "individual":

@@ -51,3 +51,7 @@ class EvaluationRecord(EvaluationSummary, total=False):
     time_star: TimeArray
     reference: FloatArray
     prediction: FloatArray
+    figure_paths: list[Path]
+    trajectory_path: Path | None
+    requested_tstar_region: list[float]
+    integration_complete: bool
