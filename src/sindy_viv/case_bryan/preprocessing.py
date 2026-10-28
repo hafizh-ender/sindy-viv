@@ -2,8 +2,49 @@
 from __future__ import annotations
 import numpy as np
 
+from .constants import TWO_TANDEM_CYLINDERS_STATE_VARIABLES
+
 # Compatibility import for older callers; active pipelines load processed arrays directly.
 from .compatibility.dataframe_conversion import convert_to_array
+
+
+def remove_repeated_tandem_records(
+    time_array: np.ndarray,
+    data_array: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Remove consecutive reporting repeats using all ten tandem channels.
+
+    A row is removed only if its recorded timestamp AND every measured channel
+    exactly equal the preceding row. Equal timestamps alone are expected when
+    six-significant-digit output becomes coarser than the physical time step;
+    equal values in one channel can also be genuine rounded plateaus.
+
+    Supply all TWO_TANDEM_CYLINDERS_STATE_VARIABLES, parsed in float64 before
+    any storage downcast. Column order does not affect this comparison. Use
+    the returned shared row selection before uniform time reconstruction and
+    acceleration alignment. This is specific to Bryan's reporting repeats,
+    not a generic method for inferring missing samples or variable time steps.
+    Inputs must be finite, time-sorted and row-aligned; they are not modified.
+    """
+    time_array = np.asarray(time_array)
+    data_array = np.asarray(data_array)
+    if time_array.ndim != 1 or len(time_array) == 0:
+        raise ValueError("Time must be a nonempty 1-D array.")
+    if (data_array.ndim != 2
+            or data_array.shape != (len(time_array), len(TWO_TANDEM_CYLINDERS_STATE_VARIABLES))):
+        raise ValueError("Repeat detection requires all ten tandem channels aligned with time.")
+    if not np.all(np.isfinite(time_array)) or not np.all(np.isfinite(data_array)):
+        raise ValueError("Tandem repeat detection requires finite time and channel values.")
+    if np.any(time_array[1:] < time_array[:-1]):
+        raise ValueError("Tandem repeat detection requires nondecreasing recorded times.")
+
+    repeated = ((time_array[1:] == time_array[:-1])
+                & np.all(data_array[1:] == data_array[:-1], axis=1))
+    if not np.any(repeated):
+        return time_array, data_array
+    keep = np.r_[True, ~repeated]
+    return time_array[keep], data_array[keep]
+
 
 def solve_time_duplicates(
     time_array: np.ndarray,

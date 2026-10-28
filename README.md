@@ -71,7 +71,20 @@ storage defaults to float64 and can explicitly use float32.
 DataFrame-based raw loaders and conversion helpers now live in
 sindy_viv.case_bryan.compatibility.dataframe_loading and dataframe_conversion;
 imports through input/preprocessing remain compatible. Bryan's specialized
-uniform timestamp reconstruction is retained. WeakSINDy supports Cases 1-5,
+uniform timestamp reconstruction is retained. Tandem processed loading first
+removes consecutive reporting repeats only when the recorded time and all ten
+motion/force channels exactly match the preceding record. Detection reads all ten
+channels in float64, including for subset selections, before any float32 cast.
+The shared cleanup precedes uniform reconstruction, acceleration alignment and
+conversion to tau. Genuine samples with identical rounded timestamps are retained;
+raw CSVs and the compatibility raw loaders are unchanged. The reconstructed clock
+still uses the nominal initial step (0.00288675 in the audited L/D=1.5, VR=5 data),
+so its precision remains limited by the printed timestamps. Validation across all
+50 tandem trajectories found 502000 raw rows each, 500001 after removing 1999
+reporting repeats, and 500000 after the existing acceleration-alignment trim. Previously saved tandem models/diagnostics must be
+regenerated to reflect this corrected sampling; they are not migrated automatically.
+
+WeakSINDy supports Cases 1-5,
 controls, and individual or parametric fits. Weak integration settings live in
 [configs/weak_feature_library](configs/weak_feature_library/README.md), separately
 from the pointwise response/parameter bases in `configs/feature_library`.

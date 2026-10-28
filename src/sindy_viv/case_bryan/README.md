@@ -8,7 +8,7 @@ windows, model paths and diagnostic metadata.
 | --- | --- | --- |
 | `constants.py` | Dataset paths, measured variable names, fixed physical settings | Source of default dataset identities. |
 | `input.py` | `load_data_single_cylinder`, `load_data_two_tandem_cylinders` | Load requested named channels as float64 dynamic time and numerical arrays, with shared recorded-acceleration alignment. |
-| `preprocessing.py` | `solve_time_duplicates`, compatibility `convert_to_array` import | Resolve timestamp conventions and retain older imports. |
+| `preprocessing.py` | `remove_repeated_tandem_records`, `solve_time_duplicates`, compatibility `convert_to_array` import | Remove shared tandem reporting repeats before reconstructing uniform timestamps. |
 | `validation.py` | `validate_selection` | Validate requested VR/L/D sets before data loading. |
 | [prepare_sindy](prepare_sindy/README.md) | `CaseLayout`, `PreparedTrajectory`, filters, optimizer preparation | Establish the exact states, controls and parameter ordering used by a fit. |
 | [compute_sindy](compute_sindy/README.md) | `compute_sindy`, `compute_weak_sindy` | Load/prepare trajectory groups, fit models and save their identities. |
@@ -43,11 +43,18 @@ all VRs at each L/D for `vr`, all L/Ds at each VR for `lpd`, and the selected
 grid for `vr_lpd`.
 
 The processed loaders convert recorded fluid time `t*` to `tau=t*/VR` once.
+Tandem loading first checks all ten channels in float64, even for subset requests,
+and removes a consecutive row only when its recorded time and every channel
+exactly match the previous row. Rounded timestamp collisions with differing
+measurements remain. The shared cleanup precedes uniform-time reconstruction
+and acceleration alignment; dtype conversion happens after repeat detection.
+The reconstructed step is still inferred from the first two retained timestamps.
 The shared `_load_processed_data` alignment section in `input.py` is enabled
 with `align_recorded_acceleration = True`: recorded hddot uses samples `[1:]`,
 while other channels and time use `[:-1]`. This applies to both cylinders and
 also trims selections without acceleration. Set the local flag to `False`, or
-comment out that entire alignment section, to restore original N-row loading.
+comment out that entire alignment section, to retain unshifted samples after
+the tandem repeat cleanup.
 Alignment follows uniform-time reconstruction and precedes filtering or
 differentiation; it does not change source CSV files.
 Data directories are configured in `constants.py`; this checkout currently
