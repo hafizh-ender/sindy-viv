@@ -20,7 +20,7 @@ def suite_parser(cylinder_type):
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
     )
     parser.add_argument(
@@ -87,7 +87,7 @@ def suite_parser(cylinder_type):
     parser.add_argument(
         '--integral_window_case',
         required=True,
-        help='Evaluation-window JSON for standard and Case 4/5 coupled IVPs.',
+        help='Evaluation-window JSON for standard and Cases 4/6/7 coupled IVPs.',
     )
     parser.add_argument(
         '--spectral_window_cases',
@@ -100,6 +100,10 @@ def suite_parser(cylinder_type):
         action='store_true',
         help="Compare CL-minus-h phase at each cylinder's reference displacement peak for IVPs.",
     )
+    parser.add_argument('--case_3_model', nargs='+',
+        help='Case 6/7 complete IVP: Case 3 training.json/model-info paths or model folders. Omit for theoretical motion. Supply multiple individual donors to cover parameterized lift fits.')
+    parser.add_argument('--structural_mstar', type=float,
+        help='Physical mass ratio for theoretical motion in coupled IVPs; defaults to the dataset true value.')
     parser.add_argument(
         '--weight_heatmap',
         action='store_true',

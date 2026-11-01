@@ -28,6 +28,7 @@ from sindy_viv.feature_library import prepare_library
 from sindy_viv.case_bryan.model_storage import resolve_model_directory, model_base_directory
 from sindy_viv.utils import add_dot_text, initiate_object, load_config
 from .coupled_integration import coupled_reference, simulate_coupled_lift
+from .complete_lift_model import MotionModels
 from .model_evaluation import (
     load_coefficients, model_differentiator_name, predict_derivative,
     report_evaluation, select_time_region, simulate, validate_selection,
@@ -75,6 +76,9 @@ def evaluate_sindy(
     coupled_motion: bool = False,
     structural_mstar: float | None = None,
     filtering_case: str | PathLike[str] | None = None,
+    model_adapter=None,
+    report_directory: str | PathLike[str] | None = None,
+    case_3_model=None,
 ) -> dict[float | tuple[float, float], EvaluationRecord]:
     """Evaluate saved models by derivative reconstruction or initial-value simulation.
 
@@ -92,14 +96,20 @@ def evaluate_sindy(
     weak_feature_library_case identifies the weak-library folder by config stem
     when weak=True; None selects "default". The weak config is not loaded.
     Pass model_dir when multiple datasets or fitting windows match.
-    Cases 3-5 normally prescribe measured controls during integration. With
-    coupled_motion=True, Cases 4/5 instead evolve [h, hdot, CL, CLdot] per
-    cylinder, using the known structural equations and both fitted lift
-    equations. structural_mstar selects the physical mass ratio (default:
+    Cases 3/4/6/7 normally prescribe measured controls during integration. With
+    coupled_motion=True, Case 6 evolves [h, hdot, CL], while Cases 4/7 evolve
+    [h, hdot, CL, CLdot] per cylinder. Cases 6/7 can take acceleration from
+    case_3_model; otherwise theoretical motion is used. Case 6/7 kinematic
+    identities are exact. structural_mstar selects the physical mass ratio (default:
     cylinder-specific true mass ratio), independently of the dataset label.
+    model_adapter optionally composes the loaded library/coefficients before
+    prediction. report_directory redirects all time-domain artifacts without
+    changing the source model or its training selectors.
+    case_3_model accepts one or more saved Case 3 metadata/model paths, or a
+    prepared MotionModels selector, only for coupled Case 6/7 IVPs.
 
     Parameters:
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
+        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, 6, or 7.
 
         optimizer_case (str or PathLike[str]): Training optimizer configuration path identifying the saved model.
 
@@ -207,6 +217,9 @@ def evaluate_sindy(
         coupled_motion=coupled_motion,
         structural_mstar=structural_mstar,
         filtering_case=filtering_case,
+        model_adapter=model_adapter,
+        report_directory=report_directory,
+        case_3_model=case_3_model,
         allow_partial_integration=evaluation_type == 'integral',
     ):
         key = item.pop('key')
@@ -270,6 +283,9 @@ def _iter_sindy_predictions(
     filtering_case: str | PathLike[str] | None = None,
     with_reference: bool = True,
     allow_partial_integration: bool = False,
+    model_adapter=None,
+    report_directory: str | PathLike[str] | None = None,
+    case_3_model=None,
 ) -> Iterator[dict[str, Any]]:
     """Yield one prepared prediction/reference trajectory at a time without writing reports.
 
@@ -277,8 +293,11 @@ def _iter_sindy_predictions(
     derivative targets and their differentiator requirement when no rate state
     needs one. Motion controls in coupled mode are generated from evolving states.
     """
-    if coupled_motion and (evaluation_type != 'integral' or dynamics_case not in (4, 5)):
-        raise ValueError('coupled_motion requires integral evaluation of Case 4 or 5.')
+    if coupled_motion and (evaluation_type != 'integral' or dynamics_case not in (4, 6, 7)):
+        raise ValueError('coupled_motion requires integral evaluation of Case 4, 6, or 7.')
+    if case_3_model is not None and (not coupled_motion or dynamics_case not in (6, 7)):
+        raise ValueError('case_3_model requires coupled integral evaluation of Case 6 or 7.')
+    motion_models = MotionModels(case_3_model) if coupled_motion and dynamics_case in (6, 7) else None
     if evaluation_type not in ("derivative", "integral"):
         raise ValueError("evaluation_type must be 'derivative' or 'integral'.")
     if evaluation_type == 'integral':
@@ -356,7 +375,7 @@ def _iter_sindy_predictions(
 
         differentiator_config = load_config(reference_case)
         reference_name = Path(reference_case).stem
-    elif dynamics_case in (2, 4, 5):
+    elif dynamics_case in (2, 4, 7):
         if reference_case is None:
             raise ValueError(f"Case {dynamics_case} integral evaluation requires a reference differentiator.")
 
@@ -425,7 +444,7 @@ def _iter_sindy_predictions(
                 reference, variable_names_to_report = X, state_names
 
             if coupled_motion:
-                reference, variable_names_to_report = coupled_reference(X, state_names, U, input_names, cylinder_type)
+                reference, variable_names_to_report = coupled_reference(X, state_names, U, input_names, cylinder_type, dynamics_case)
 
             if evaluation_type == 'integral':
                 integration_options = reference_limit_options(reference, max_state_factor, atol, solver_options)
@@ -476,6 +495,21 @@ def _iter_sindy_predictions(
                 if uses_shape_only_fit(library):
                     fitted_libraries[model_dir] = (library, coefficients)
 
+            if model_adapter is not None:
+                library, coefficients = model_adapter(
+                    library, coefficients, states=X, state_names=state_names,
+                    parameter_names=parameter_names, vr=vr, lpd=lpd,
+                )
+
+            report_dir = model_dir/'evaluation'
+            if lpd is not None:
+                report_dir /= f'LpD = {lpd}'
+            report_dir /= f'VR = {vr}'
+            if report_directory is not None:
+                report_dir = Path(report_directory)
+            elif coupled_motion and dynamics_case in (6, 7):
+                report_dir /= Path('complete_model')/motion_models.report_folder(motion_models.select(cylinder_type, vr, lpd))
+
             if evaluation_type == "derivative":
                 prediction = predict_derivative(library, coefficients, X, parameters, input_data=U, block_size=block_size)
                 solver = None
@@ -487,6 +521,9 @@ def _iter_sindy_predictions(
                     parameters=parameters, method=method, rtol=rtol, atol=atol,
                     solver_options=integration_options,
                     allow_partial=allow_partial_integration,
+                    lpd=lpd, motion_models=motion_models, base_model_dir=model_dir,
+                    output_directory=report_dir if dynamics_case in (6, 7) else None,
+                    reference=reference,
                 )
             else:
                 print(f'  Integrating: {len(t)} requested samples', flush=True)
@@ -511,16 +548,12 @@ def _iter_sindy_predictions(
                 t, reference = t[:count].copy(), reference[:count].copy()
             del X, U
 
-            report_dir = model_dir / "evaluation"
             parameter_values = {'Re': re, 'm^*': mstar, 'V_R': vr}
             if cylinder_type == "single":
                 key = vr
             else:
                 key = (lpd, vr)
                 parameter_values['L/D'] = lpd
-                report_dir /= f"LpD = {lpd}"
-
-            report_dir /= f"VR = {vr}"
             yield dict(
                 key=key, kind='coupled_integral' if coupled_motion else evaluation_type,
                 model_dir=model_dir, report_dir=report_dir, time=t, vr=vr,

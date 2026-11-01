@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "purpose": "Reusable Case 3 motion donors for fresh Case 6/7 studies; independent of archived results.",
+  "donors": {
+    "single": {
+      "training_file": "single/training.json",
+      "model_sha256": "ae7bd00662012bde4389300c6e7d9db65fcebd4bc69bf30f4e1e4a9559b1450f",
+      "training_sha256": "fcacc60b7e69b9905b04280a768c1cc5e4ceadc348828c980fc505d871f02956",
+      "original_model_directory": "results\\oscillating-cylinder-viv\\dynamics_case_3\\filtering=butterworth_single_flim2\\finite_difference_basic\\parametric_vr\\state_polynomial_1\\input_polynomial_2\\stlsq_vanilla_basic\\Re = 150\\Mstar = 5.1\\VR=3,4,5,6,7,8\\fit_window=overall_reduced\\time=per-trajectory-22a0f98bf218",
+      "parameterization": "vr"
+    },
+    "two_tandem": {
+      "training_file": "two_tandem/training.json",
+      "model_sha256": "f1cd1ff53a837d8aeb676a3b2ad305855911a1b0294d26dd7bfd45736ecd039b",
+      "training_sha256": "aab1cd8eea54a15fbfecb62877ed061f44af1fd3b8c1387d951fb3ece459bfec",
+      "original_model_directory": "results\\oscillating-cylinder-tandem-viv\\dynamics_case_3\\filtering=butterworth_two_tandem_flim2\\finite_difference_basic\\parametric_vr_lpd\\state_polynomial_1\\input_polynomial_2\\stlsq_vanilla_basic\\LpD=1.5,2,3,3.5,4\\VR=5,6,7,8,9,10,11,12,13,14\\fit_window=overall_reduced\\time=100..1350",
+      "parameterization": "vr_lpd"
+    }
+  }
+}

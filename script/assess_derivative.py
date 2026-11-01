@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
     )
     parser.add_argument(

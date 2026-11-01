@@ -13,8 +13,10 @@ perform the actual model/report writes.
 | `paths.py` | `model_base_directory` | Identify case, filter, differentiator, fitting family, libraries, optimizer and fixed dataset settings. |
 | `paths.py` | `training_directory` | Append selected parameter sets, optional window name and a reproducible time label. |
 | `paths.py` | `resolve_model_directory` | Locate the saved model matching training selectors; reject missing/ambiguous matches. |
+| `model_info.py` | `ModelInfo.read`, `validate_selection`, `manifest` | Read saved/manual model metadata, validate compatible VR/L/D selections, and record coefficient hashes for hybrid evaluation. |
 
-All seven functions are re-exported from `sindy_viv.case_bryan.model_storage`.
+The seven window/path functions are re-exported from `sindy_viv.case_bryan.model_storage`.
+`ModelInfo` is imported from `sindy_viv.case_bryan.model_storage.model_info`.
 Private window-index helpers normalize JSON keys before public selection and
 are described in their docstrings.
 

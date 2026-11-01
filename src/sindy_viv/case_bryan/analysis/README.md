@@ -81,76 +81,29 @@ and use three decimal places with 8-point annotations. Nonzero coefficient
 magnitudes below 0.001 use signed less-than labels; saved CSV/JSON values keep
 full precision. Their colorbar reads `Coefficient`.
 
-## Single-cylinder diagnostic runner
+## Single and tandem diagnostic commands
 
-Run `run_new_data_diagnostics_single.bat` from PowerShell or Command Prompt:
-
-```powershell
-.\run_new_data_diagnostics_single.bat --dry-run
-.\run_new_data_diagnostics_single.bat
-```
-
-The dry run prints the 72 commands. The normal run executes them sequentially
-for VR 3-8, using this checkout's `.venv` and source code. Every selected
-trajectory uses its own bounds from `configs/fit_window/single/`, including
-VR 7's distinct intervals. The former data-diagnostic batches are archived
-under `old_run/`.
-
-| Stage | Windows | Outputs |
-| --- | --- | --- |
-| Raw time histories | `overall_reduced`, `sinusoidal`, `sinusoidal_evaluation` | All measured channels, one figure per VR/window |
-| Frequency | `overall_reduced`, `sinusoidal` | Individual h/CL FFT spectra, dominant-frequency 2D summaries with the natural-frequency curve, and waterfalls |
-| Amplitude | `sinusoidal` | Half peak-to-peak and rectangular-window FFT amplitudes, with 2D summaries |
-| Phase | `sinusoidal` | CL-minus-h phase divided by pi, versus reduced velocity |
-| Filtering | All three windows | Raw/filtered h/CL time-series and FFT comparisons, with 2D frequency/amplitude summaries |
-| Derivatives with/without filtering | All three windows | Case 2 derivative histories, trapezoid IVP/recorded-channel assessments, and matching 2D NRMSE heatmaps |
-
-Filtering uses `butterworth_single_flim2.json` and `savgol_single_base.json`.
-Each filter/window is paired with `finite_difference_basic.json` (order 2)
-and `savitzky_golay_single_base.json`. A separate no-preprocessing-filter
-baseline omits `--filtering_case` (Python `None`) for both differentiators
-and stores assessment reports and heatmap summaries under
-`derivative_assessment/dynamics_case_<N>/filtering=None/<differentiator>/`.
-It runs on all three windows, adding 18 commands: histories, trapezoidal
-reconstruction assessments and matching NRMSE heatmaps. SG differentiation
-still uses its configured local polynomial window. Individual FFT displays cover f* = 0-2;
-their peak summaries still use the full positive-frequency spectrum. Raw and
-derivative time histories include all channels; the other overviews use h/CL.
-
-The runner checks its scripts/configs before starting, computes reports before
-their summaries, saves figures at 300 DPI, and overwrites matching destinations.
-It counts failures and continues with later commands; its final exit code is
-nonzero if any command failed. Edit `DIAG_VRS` and `DIAG_VARIABLES` near the top
-to change the selected reduced velocities or overview channels.
-
-## Two-tandem-cylinder diagnostic runner
+The root diagnostic batch launchers and `old_run/` were removed. Run the
+maintained Python commands directly from the repository root, using `--help`
+for their selectors. Diagnostics do not require a fitted SINDy model.
 
 ```powershell
-.\run_new_data_diagnostics_two_tandem.bat --dry-run
-.\run_new_data_diagnostics_two_tandem.bat
+python script/plot_all_variables_single.py --vr_list 3 4 5 6 7 8 --fit_window_case configs/fit_window/single/overall_reduced.json
+python script/frequency_analysis_single.py --vr_list 3 4 5 6 7 8 --fit_window_case configs/fit_window/single/sinusoidal.json --plot_variables h CL
+python script/frequency_analysis_two_tandem.py --vr_list 5 10 14 --lpd_list 1.5 3 4 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json --plot_variables h CL
 ```
 
-This runner uses the same 72-command workflow for both cylinders across VR
-5-14 and L/D = 1.5, 2, 3, 3.5, 4. Every pair takes its own recorded-time bounds
-from `configs/fit_window/two_tandem/`: `overall_reduced`, `sinusoidal`, and
-`sinusoidal_evaluation`. Raw and derivative histories include all channels;
-frequency, amplitude and filtering overviews use h/CL from both cylinders.
+Single-cylinder diagnostics default to VR 3-8; tandem defaults cover VR 5-14
+and L/D 1.5, 2, 3, 3.5, 4. Use `--vr_list` and `--lpd_list` to narrow them.
+Each pair uses the bounds in its selected window JSON. Both tandem cylinders
+are included unless a plot filter selects one.
 
-The filters are `butterworth_two_tandem_flim2.json` and
-`savgol_two_tandem_base.json`, each paired with `finite_difference_basic.json`
-and `savitzky_golay_two_tandem_base.json` for the Case 2 derivative diagnostics.
-Both differentiators also run with `filtering=None` on all three windows,
-including histories, reconstruction assessments and matching heatmaps.
-Filtering includes individual time-series/FFT comparisons and 2D summaries
-versus both VR and L/D. Dominant-frequency summaries also include a VR/L/D
-surface; amplitude summaries cover both axes and a surface. Phase plots show
-CL-minus-h for each cylinder and downstream-minus-upstream displacement phase
-versus VR, with separate L/D curves. Derivative assessments run before their
-matching VR/L/D NRMSE heatmaps.
-
-The tandem runner uses this checkout's `.venv` and source code, checks required
-inputs, and counts failures while continuing with later commands. Change
-`DIAG_VRS`, `DIAG_LPDS`, or `DIAG_VARIABLES` near the top to select cases/channels.
+Filtering comparisons use `assess_filtering_single.py` or
+`assess_filtering_two_tandem.py`. Numerical derivative histories and
+reconstruction use `plot_derivative_*` and `assess_derivative.py`, followed
+by `plot_error_heatmap_derivative_assessment.py` to aggregate their saved errors.
+Omitting `--filtering_case` selects the unfiltered branch. Full-record filtering
+and differentiation precede the evaluation-window crop.
 
 ## Raw-analysis output layout
 
@@ -165,7 +118,7 @@ results/oscillating-cylinder-viv/analysis/Re = 150/Mstar = 5.1/
     plot_full_range.png
     frequency_analysis/...
     derivative_plot/dynamics_case_2/filtering=None/<differentiator>/fit_window=.../time=.../...
-    derivative_assessment/dynamics_case_2/<differentiator>/time=.../...
+    derivative_assessment/dynamics_case_2/filtering=None/<differentiator>/time=.../...
   frequency_waterfalls/fft_window=.../VR=.../fit_window=.../time=.../...
   frequency_vr_summary/fft_window=.../VR=.../fit_window=.../time=.../...
   phase_vr_summary/fft_window=.../VR=.../fit_window=.../time=.../...
@@ -179,7 +132,7 @@ results/oscillating-cylinder-tandem-viv/analysis/
       plot_full_range.png
       frequency_analysis/...
       derivative_plot/dynamics_case_2/filtering=None/<differentiator>/fit_window=.../time=.../...
-      derivative_assessment/dynamics_case_2/<differentiator>/time=.../...
+      derivative_assessment/dynamics_case_2/filtering=None/<differentiator>/time=.../...
     frequency_waterfalls/fft_window=.../VR=.../fit_window=.../time=.../...
   frequency_vr_summary/fft_window=.../LpD=.../VR=.../fit_window=.../time=.../...
   phase_vr_summary/fft_window=.../LpD=.../VR=.../fit_window=.../time=.../...
@@ -416,7 +369,7 @@ time subfolders. Example filenames are `phase_CL0_minus_h0_vs_VR.png` and
 `phase_h1_minus_h0_vs_VR.png`. Matching settings overwrite existing outputs;
 CSV/JSON files retain the common frequency, radians, normalized phase and
 selected time intervals. `--results_root`, `--output_dir` and `--show` are
-supported. `run_data_diagnostics.bat` includes commands for both configurations.
+supported. Use the single or tandem Python entry point for each dataset.
 
 ## Amplitude computation and saved-result plots
 
@@ -547,7 +500,7 @@ In this new SINDy command, `--training_fit_window_case` identifies the fitted
 model, while `--fit_window_case` identifies evaluation bounds. Alternatively
 omit the latter and give `--tstar0 850 --tstarf 900`. These heatmaps summarize
 integrated `XSINDy` versus recorded `X`. Use `--coupled_motion` for saved coupled
-Case 4/5 simulations. Parametric and weak model selectors are the same as in
+Cases 4/6/7 simulations. Parametric and weak model selectors are the same as in
 the existing SINDy error scripts. Incomplete IVPs are excluded from complete-
 window summaries. Their missing cells can be shown with `--allow_missing`.
 
@@ -583,10 +536,10 @@ First run the corresponding derivative/integral evaluation. These commands
 read the saved metrics; they do not refit models or repeat simulation:
 
 ```powershell
-python script/plot_error_heatmap_derivative_sindy_single.py --dynamics_case 1 --vr_list 3 4 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/sinusoidal.json --tstar0 300 --tstarf 600
-python script/plot_error_heatmap_integral_sindy_single.py --dynamics_case 1 --vr_list 3 4 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/sinusoidal.json --tstar0 300 --tstarf 600
-python script/plot_error_heatmap_derivative_sindy_two_tandem.py --dynamics_case 1 --vr_list 5 6 --lpd_list 1.5 2.0 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --tstar0 600 --tstarf 1400
-python script/plot_error_heatmap_integral_sindy_two_tandem.py --dynamics_case 1 --vr_list 5 6 --lpd_list 1.5 2.0 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --tstar0 600 --tstarf 1400
+python script/plot_error_heatmap_derivative_sindy_single.py --dynamics_case 1 --vr_list 3 4 --differentiator_case configs/differentiator/savitzky_golay_single_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/sinusoidal.json --tstar0 300 --tstarf 600
+python script/plot_error_heatmap_integral_sindy_single.py --dynamics_case 1 --vr_list 3 4 --differentiator_case configs/differentiator/savitzky_golay_single_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/sinusoidal.json --tstar0 300 --tstarf 600
+python script/plot_error_heatmap_derivative_sindy_two_tandem.py --dynamics_case 1 --vr_list 5 6 --lpd_list 1.5 2.0 --differentiator_case configs/differentiator/savitzky_golay_two_tandem_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --tstar0 600 --tstarf 1400
+python script/plot_error_heatmap_integral_sindy_two_tandem.py --dynamics_case 1 --vr_list 5 6 --lpd_list 1.5 2.0 --differentiator_case configs/differentiator/savitzky_golay_two_tandem_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --tstar0 600 --tstarf 1400
 ```
 
 Single-cylinder scripts plot VR versus NRMSE. Tandem scripts save both curves
@@ -598,7 +551,7 @@ Model selectors match evaluation: `--parameterization individual` (default),
 `vr`, `lpd`, or `vr_lpd`, `--input_feature_library_case`, `--weak`,
 `--weak_feature_library_case`, `--training_vr_list`, `--training_lpd_list`,
 and `--model_dir`. `--individual` and `--parameterized` are aliases for
-`individual` and `vr`. Integral Case 4/5 scripts accept `--coupled_motion`.
+`individual` and `vr`. Integral Cases 4/6/7 scripts accept `--coupled_motion`.
 
 Here `--fit_window_case` identifies the training configuration; it does not
 change the scoring interval of an existing report. `--tstar0`/`--tstarf` and

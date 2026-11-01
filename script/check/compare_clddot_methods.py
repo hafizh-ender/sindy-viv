@@ -62,8 +62,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--output_dir',
         type=Path,
-        default=Path('state/clddot_comparison'),
-        help='Destination for comparison PNGs, CSVs and summary JSON. Default: state/clddot_comparison.',
+        default=Path('results/diagnostics/clddot_comparison'),
+        help='Destination for comparison PNGs, CSVs and summary JSON. Default: results/diagnostics/clddot_comparison.',
     )
     args = parser.parse_args()
     if not np.isfinite(args.zoom_cycles) or args.zoom_cycles <= 0:

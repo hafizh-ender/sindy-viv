@@ -134,7 +134,7 @@ def assess_bryan_feature_library(
     state_feature_library_case, *, dynamics_case, cylinder_type='single',
     vr_list=None, lpd_list=None, fit_window_case=None, tstar0=None, tstarf=None,
     parameterization='individual', input_feature_library_case=None,
-    differentiator_case='configs/differentiator/finite_difference_basic.json', filtering_case=None,
+    differentiator_case=None, filtering_case=None,
     batch_size=8192, rank_rtol=None, results_root='results', output_dir=None, show=False,
     normalized_only=False,
 ):
@@ -152,8 +152,11 @@ def assess_bryan_feature_library(
     normalized JSON, metadata, summary tables and heatmaps.
     """
     layout = get_case_layout(dynamics_case, cylinder_type)
+    from sindy_viv.defaults import default_config_path
+    if differentiator_case is None:
+        differentiator_case = default_config_path('differentiator', 'finite_difference_basic.json')
     if fit_window_case is None and tstar0 is None and tstarf is None:
-        fit_window_case = Path(__file__).resolve().parents[4]/'configs/fit_window'/cylinder_type/'overall.json'
+        fit_window_case = default_config_path('fit_window', cylinder_type, 'overall.json')
     selection = data_selection(cylinder_type, vr_list, lpd_list, fit_window_case, tstar0, tstarf)
     groups, parameter_names = trajectory_groups(selection, parameterization)
     if (input_feature_library_case is None) != (parameterization == 'individual'):

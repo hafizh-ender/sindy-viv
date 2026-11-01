@@ -220,3 +220,25 @@ __marimo__/
 # Results and Data
 data/
 results/
+results_unmain/
+/tests/*
+!/tests/test_manuscript_assets.py
+!/tests/test_full_recompute.py
+results_before/
+old_run/
+state/
+junk/
+
+# Local manuscript numerical caches; figure previews and LaTeX remain visible.
+/img/*/data/
+img/
+
+# Full-recompute outputs: retain the portable plan and submission log folder.
+/result/experiment/*
+!/result/experiment/full_recompute_plan.json
+!/result/experiment/slurm_logs/
+/result/experiment/slurm_logs/*
+!/result/experiment/slurm_logs/.gitkeep
+/.tmp/
+/.uv-cache/
+

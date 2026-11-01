@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
     )
     parser.add_argument(
@@ -121,7 +121,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--coupled_motion',
         action='store_true',
-        help='Case 4/5 integral evaluation with evolving motion.',
+        help='Cases 4/6/7 integral evaluation with evolving motion.',
     )
     parser.add_argument(
         '--structural_mstar',
@@ -158,6 +158,7 @@ def parse_args() -> argparse.Namespace:
             'filtering config folder.'
         ),
     )
+    parser.add_argument('--case_3_model', nargs='+', help='Case 6/7 coupled IVP: saved Case 3 training.json/model-info paths or folders; omit for theoretical motion.')
     return parser.parse_args()
 
 

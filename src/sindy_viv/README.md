@@ -4,10 +4,25 @@ This package separates reusable SINDy operations from Bryan's cylinder dataset.
 Use the generic modules with prepared arrays from another problem; use
 `case_bryan` when loading the project's cylinder CSVs and configurations.
 
+The installed package is self-contained apart from its declared third-party
+dependencies and caller-supplied data/config/model files. It never imports
+repository scripts or scratch code. Default overall windows, weak-library
+settings and finite-difference settings ship in `sindy_viv/presets`; they are
+resolved inside the package, independently of the working directory. Repository
+`configs/` files are optional experiment inputs, not an installation requirement.
+Use `sindy_viv.defaults.default_config_path(...)` to locate a bundled preset.
+
+Repository scripts compose these APIs. Persistent models, evaluations and study
+checkpoints normally belong under `results/`; explicitly configured studies can
+use their own experiment output tree. Scratch orchestration and temporary
+validation artifacts belong outside the package. Dataset CSVs remain external
+scientific inputs; the Bryan dataset locations are configured in `constants.py`.
+
 | Location | Main functions/classes | Role and next step |
 | --- | --- | --- |
 | `sindy/functions.py` | `perform_sindy`, `perform_weak_sindy` | Fit prepared arrays and return a pointwise PySINDy model. Bryan computation calls these functions. |
 | [feature_library](feature_library/README.md) | `prepare_library`, `SelectedPolynomialLibrary`, `InversePolynomialLibrary`, `assess_feature_library`, `assess_feature_matrix` | Build feature columns, support weak integration, and assess correlation/conditioning. |
+| [optimizers](optimizers/README.md) | `SVDLeastSquares`, `RidgeOnly`, `SequentialSVD` | Explicit unscaled GELSD OLS, genuine SVD Ridge and sequential support refits without final unbiasing. |
 | `differentiation` | `perform_derivative`, `perform_second_derivative`, `SavitzkyGolayDerivative` | Differentiate arrays on their supplied time coordinate; select native second derivatives where supported. No dataset loading or time conversion occurs here. |
 | `metrics/numerical.py` | `normalized_root_mean_squared_error`, `relative_l2_error` | Score aligned arrays; evaluation passes reference/prediction channels here. |
 | `utils.py` | `load_config`, `initiate_object`, `add_dot_text`, formatting helpers | Read object descriptors, instantiate configured classes, and construct derivative labels. |

@@ -1,0 +1,16 @@
+{
+    "module": "pysindy.optimizers.wrapped_optimizer",
+    "class_name": "WrappedOptimizer",
+    "kwargs": {
+        "optimizer": {
+            "module": "sklearn.linear_model",
+            "class_name": "LinearRegression",
+            "kwargs": {
+                "fit_intercept": false,
+                "copy_X": true
+            }
+        },
+        "normalize_columns": false,
+        "unbias": false
+    }
+}

@@ -1,0 +1,63 @@
+{
+  "experiment_id": "full_recompute_20261101_v1",
+  "configuration_version": 1,
+  "group": "tandem_lpd_1p5",
+  "cylinder_type": "two_tandem",
+  "environment": "hpc",
+  "vr": [
+    5,
+    10,
+    14
+  ],
+  "lpd": 1.5,
+  "dynamics_case": 6,
+  "parameterization": "individual",
+  "training_window": "configs/fit_window/two_tandem/sinusoidal.json",
+  "validation_window": "configs/fit_window/two_tandem/sinusoidal_evaluation.json",
+  "filtering": "configs/filtering/butterworth_two_tandem_flim2.json",
+  "differentiator": "configs/differentiator/finite_difference_basic.json",
+  "polynomial_degrees": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "regularized_degrees": [
+    3,
+    5
+  ],
+  "alphas": [
+    1e-06,
+    0.0001,
+    0.001,
+    0.01,
+    0.1,
+    0.5,
+    5.0
+  ],
+  "thresholds": [
+    0.001,
+    0.005,
+    0.01,
+    0.05,
+    0.1,
+    0.5,
+    1.0
+  ],
+  "normalize_columns": false,
+  "unbias": false,
+  "include_bias": true,
+  "rank_cutoff": "max(N,P)*float64_eps",
+  "rank_driver": "gelsd",
+  "ridge_solver": "svd",
+  "sequential_max_iter": 100,
+  "motion_source": "theoretical",
+  "solver": {
+    "method": "RK45",
+    "rtol": 1e-06,
+    "atol": 1e-09,
+    "max_state_factor": 10.0,
+    "wall_seconds": 120.0
+  }
+}

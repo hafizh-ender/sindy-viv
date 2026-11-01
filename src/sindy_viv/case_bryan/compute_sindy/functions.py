@@ -106,8 +106,8 @@ def compute_sindy(
     """
 
     # Validate the dynamics case
-    if dynamics_case not in (1, 2, 3, 4, 5):
-        raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
+    if dynamics_case not in (1, 2, 3, 4, 6, 7):
+        raise ValueError("dynamics_case must be 1, 2, 3, 4, 6, or 7; Case 5 was removed.")
 
     if cylinder_type == "single":
         case_name = SINGLE_CYLINDER_CASE_NAME
@@ -149,7 +149,8 @@ def compute_sindy(
 
     # Even the full-data default is read from JSON so every fit has one window source.
     if fit_window_case is None:
-        fit_window_case = Path(__file__).resolve().parents[4] / "configs" / "fit_window" / cylinder_type / "overall.json"
+        from sindy_viv.defaults import default_config_path
+        fit_window_case = default_config_path('fit_window', cylinder_type, 'overall.json')
     window_config = load_fit_window_config(fit_window_case, cylinder_type)
     fitting_bounds = prepare_fit_window_bounds(
         window_config, [(lpd, vr) for lpd in lpd_list for vr in vr_list], cylinder_type,

@@ -1,0 +1,2 @@
+# Slurm rejects CRLF scripts; retain Unix line endings across Windows checkouts.
+*.slurm text eol=lf

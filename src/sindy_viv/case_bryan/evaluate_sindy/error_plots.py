@@ -18,9 +18,10 @@ from sindy_viv.case_bryan.model_storage import model_base_directory, resolve_mod
 from sindy_viv.case_bryan.model_storage.paths import training_directory
 from sindy_viv.case_bryan.plot import select_plot_variables
 from .model_evaluation import model_differentiator_name
+from .complete_lift_model import MotionModels
 
 
-def _matching_report(report_dir, kind, reference_name, start, stop, *, recursive=False, integration_method=None):
+def _matching_report(report_dir, kind, reference_name, start, stop, *, recursive=False, integration_method=None, path_marker=None):
     """
     Select one report by kind, differentiator and requested t* sample bounds.
 
@@ -31,6 +32,8 @@ def _matching_report(report_dir, kind, reference_name, start, stop, *, recursive
     matches = []
     candidates = report_dir.rglob(kind+'_error_metrics_*.json') if recursive else report_dir.glob(kind+'_error_metrics_*.json')
     for path in candidates:
+        if path_marker is not None and '/'+Path(path_marker).as_posix()+'/' not in '/'+path.relative_to(report_dir).as_posix():
+            continue
         payload = json.loads(path.read_text(encoding='utf-8'))
         if payload.get('evaluation') != kind:
             continue
@@ -67,6 +70,7 @@ def plot_saved_errors(
     tstar0=None, tstarf=None, coupled_motion=False, results_root='results',
     output_dir=None, plot_variables=None, plot_cylinders=None, allow_missing=False, show=False,
     evaluation_window_case=None, heatmap_only=False,
+    case_3_model=None,
 ) -> list[Path]:
     """Read saved NRMSE reports; plot VR curves and tandem L/D-by-VR heatmaps.
 
@@ -84,8 +88,11 @@ def plot_saved_errors(
     """
     if evaluation_type not in ('derivative', 'integral'):
         raise ValueError('evaluation_type must be derivative or integral.')
-    if coupled_motion and (evaluation_type != 'integral' or dynamics_case not in (4, 5)):
-        raise ValueError('coupled_motion supports only integral Cases 4/5.')
+    if coupled_motion and (evaluation_type != 'integral' or dynamics_case not in (4, 6, 7)):
+        raise ValueError('coupled_motion supports only integral Cases 4/6/7.')
+    if case_3_model is not None and (not coupled_motion or dynamics_case not in (6, 7)):
+        raise ValueError('case_3_model requires coupled Case 6/7 reports.')
+    motion_models = MotionModels(case_3_model) if coupled_motion and dynamics_case in (6, 7) else None
     if parameterization not in ('individual', 'vr', 'lpd', 'vr_lpd'):
         raise ValueError('Unknown parameterization.')
     if parameterization in ('lpd', 'vr_lpd') and cylinder_type == 'single':
@@ -99,7 +106,7 @@ def plot_saved_errors(
     diff_name = model_differentiator_name(dynamics_case, differentiator_case, weak)
     reference_case = evaluation_differentiator_case or differentiator_case
     reference_name = Path(reference_case).stem if reference_case is not None else None
-    if evaluation_type == 'integral' and dynamics_case in (1, 3):
+    if evaluation_type == 'integral' and dynamics_case in (1, 3, 6):
         reference_name = 'no_differentiator'
     mode = 'individual' if parameterization == 'individual' else 'parametric_'+parameterization
     if weak:
@@ -121,7 +128,9 @@ def plot_saved_errors(
                     report_dir /= f'LpD = {lpd}'
                 report_dir /= f'VR = {vr}'
                 start, stop = selection.bounds[(lpd, vr)]
-                path, payload = _matching_report(report_dir, kind, reference_name, start, stop)
+                marker = motion_models.report_folder(motion_models.select(cylinder_type, vr, lpd)) if motion_models is not None else None
+                path, payload = _matching_report(report_dir, kind, reference_name, start, stop,
+                    recursive=motion_models is not None, path_marker=marker)
             except FileNotFoundError as error:
                 if not allow_missing:
                     raise
@@ -147,6 +156,8 @@ def plot_saved_errors(
         folder /= f'reference={reference_name}'
     if evaluation_window_case is not None:
         folder /= 'evaluation_window='+Path(evaluation_window_case).stem
+    if motion_models is not None:
+        folder /= motion_models.report_folder()
     trajectories = [dict(VR=vr, LpD=lpd, requested_tstar0=selection.bounds[(lpd, vr)][0],
                          requested_tstarf=selection.bounds[(lpd, vr)][1])
                     for lpd in selection.lpds for vr in selection.vrs]

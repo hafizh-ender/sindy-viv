@@ -108,7 +108,7 @@ def prepare_trajectory(
     dtype (float32 or float64, default float64) controls state, derivative and
     control storage, including integer measurements. The differentiator must
     return first derivatives in tau with the same shape as its input.
-    with_derivatives=False computes only lift rates needed for Cases 2/4/5 and
+    with_derivatives=False computes only lift rates needed for Cases 2/4/7 and
     omits regression targets. Differentiate full trajectories before cropping.
     Lift accelerations use native second derivatives of filtered lift for
     supported methods; other callables differentiate the lift rate again.
@@ -121,7 +121,7 @@ def prepare_trajectory(
 
         differentiator (Differentiator or None): First-derivative callable evaluated on the supplied time axis; None is valid only when no derivative is needed.
 
-        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, 6, or 7.
         cylinder_type (str): Cylinder configuration: single or two_tandem.
 
         dtype (numpy.dtype, type, or str): Floating computation or storage dtype; Bryan time arrays remain float64. Default: np.float64
@@ -148,6 +148,21 @@ def prepare_trajectory(
             raise ValueError("Filtering must return finite measurements with the same shape as its input.")
         data = filtered
     state_names, input_names = list(layout.state_names), list(layout.input_names)
+    if case == 7:
+        if differentiator is None:
+            raise ValueError('Case 7 requires a differentiator to construct the lift-rate state.')
+        lift = np.asarray(data[:, [indices[name] for name in layout.lift_names]], dtype=value_dtype)
+        states = np.asarray(perform_derivative(t, lift, differentiator), dtype=value_dtype)
+        if states.shape != lift.shape:
+            raise ValueError('The differentiator must return the same shape as its input.')
+        derivatives = None
+        if with_derivatives:
+            derivatives = np.asarray(perform_second_derivative(
+                t, lift, differentiator, first_derivative=states), dtype=value_dtype)
+            if derivatives.shape != lift.shape:
+                raise ValueError('The second derivative must return the same shape as its lift input.')
+        inputs = np.asarray(data[:, [indices[name] for name in input_names]], dtype=value_dtype)
+        return PreparedTrajectory(t, states, derivatives, state_names, inputs, input_names)
     states = np.empty((len(t), len(state_names)), dtype=value_dtype)
     state_indices = {name: column for column, name in enumerate(state_names)}
     for name in layout.base_names:

@@ -6,7 +6,8 @@ from `configs/feature_library`; parametric fits also select a parameter basis
 from that directory.
 
 Pass `--weak_feature_library_case configs/weak_feature_library/default.json`.
-Omitting it selects this default file. `K` is the number of windows **per
+Omitting it selects the equivalent package-bundled default in
+`sindy_viv/presets/weak_feature_library/default.json`. `K` is the number of windows **per
 trajectory**, `H_xt` is their half width in dynamic time tau (null means each
 cropped trajectory span / 20), and `p` is the positive integer degree in the
 test function `(1-z^2)^p`. Set these values in the JSON; the CLI reads them

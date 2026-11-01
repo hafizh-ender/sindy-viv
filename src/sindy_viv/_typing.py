@@ -10,7 +10,8 @@ from numpy.typing import NDArray
 
 FloatArray = NDArray[np.float32] | NDArray[np.float64]
 TimeArray = NDArray[np.float64]
-DynamicsCase = Literal[1, 2, 3, 4, 5]
+DynamicsCase = Literal[1, 2, 3, 4, 6, 7]
+SUPPORTED_DYNAMICS_CASES = (1, 2, 3, 4, 6, 7)
 CylinderType = Literal["single", "two_tandem"]
 Parameterization = Literal["individual", "vr", "lpd", "vr_lpd"]
 

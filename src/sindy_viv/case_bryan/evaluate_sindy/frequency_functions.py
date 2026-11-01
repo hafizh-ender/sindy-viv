@@ -166,7 +166,7 @@ def evaluate_frequency_integral(
     """Simulate XSINDy, save its dominant frequencies, optionally compare measured X.
 
     Uses the same selectors and solver settings as integral evaluate_sindy.
-    coupled_motion=True closes Case 4/5 motion using the structural equations;
+    coupled_motion=True closes Cases 4/6/7 motion using the structural equations;
     structural_mstar selects the physical mass ratio. Both model-only and
     comparison modes write dominant frequency/amplitude/phase reports. Phase
     comparisons always use a common frequency bin and the same time origin.

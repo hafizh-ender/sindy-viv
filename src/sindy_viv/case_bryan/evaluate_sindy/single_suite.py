@@ -29,6 +29,7 @@ from sindy_viv.utils import add_dot_text
 from .frequency_functions import compare_frequency_analysis
 from .functions import evaluate_sindy
 from .model_evaluation import validate_max_state_factor
+from .complete_lift_model import MotionModels, complete_state_names
 
 
 def _write_json(path, payload):
@@ -361,6 +362,8 @@ def _summary_folder(directories, selection, options):
     folder = Path(os.path.commonpath([str(path.resolve()) for path in directories.values()]))/'evaluation'/'summary'
     folder /= 'reference='+Path(options['differentiator_case']).stem
     folder /= 'evaluation_window='+selection.window_name
+    if options.get('report_subdirectory') is not None:
+        folder /= options['report_subdirectory']
     trajectories = [dict(VR=vr, LpD=lpd, requested_tstar0=selection.bounds[(lpd, vr)][0],
                          requested_tstarf=selection.bounds[(lpd, vr)][1])
                     for lpd in selection.lpds for vr in selection.vrs]
@@ -377,24 +380,37 @@ def evaluate_suite(
     method='RK45', max_state_factor=10., rtol=1e-6, atol=1e-9, results_root='results',
     filtering_case=None,
     model_directories=None,
+    model_adapter=None, report_subdirectory=None, report_metadata=None,
+    re=None, mstar=None,
+    case_3_model=None, structural_mstar=None,
 ):
     """Run the checklist's derivative, IVP, spectral, amplitude and coefficient diagnostics.
 
     Each VR/L/D trajectory is loaded, predicted, analyzed and released before proceeding.
     Failed trajectories are recorded as N/A without blocking the next trajectory.
-    Case 4/5 automatically receive an additional coupled-motion IVP.
+    Cases 4/6/7 automatically receive an additional coupled-motion IVP.
 
     ``model_directories`` optionally maps every selected VR (single) or
     (L/D, VR) pair (tandem) to an explicit saved-model folder. For manual CSVs
     without training.json, training selectors are omitted from model lookup;
     evaluation windows and explicit library/name validation still apply. The
     fit-window argument then labels reports without asserting the model was fitted.
+    model_adapter composes equations after loading; report_subdirectory is
+    inserted directly below each evaluation_window folder and isolates all
+    artifacts. report_metadata snapshots the composition in each destination.
     """
     validate_max_state_factor(max_state_factor)
+    if report_subdirectory is not None:
+        report_subdirectory = Path(report_subdirectory)
+        if report_subdirectory.is_absolute() or '..' in report_subdirectory.parts or not report_subdirectory.parts:
+            raise ValueError('report_subdirectory must be a nonempty relative path without .. components.')
     if weight_heatmap and dynamics_case != 3:
         raise ValueError('Coefficient heatmap requires Case 3 models.')
-    if phase_comparison and dynamics_case not in (1, 2):
-        raise ValueError('h/CL phase comparison requires full-state Case 1 or 2.')
+    if phase_comparison and dynamics_case not in (1, 2, 6, 7):
+        raise ValueError('h/CL phase comparison requires Case 1/2 or a complete Case 6/7 assessment.')
+    if case_3_model is not None and dynamics_case not in (6, 7):
+        raise ValueError('case_3_model is available for the complete Case 6/7 assessment.')
+    motion_models = MotionModels(case_3_model) if dynamics_case in (6, 7) else None
     if parameterization not in ('individual', 'vr', 'lpd', 'vr_lpd'):
         raise ValueError('Unknown parameterization.')
     if cylinder_type == 'single' and (parameterization in ('lpd', 'vr_lpd') or training_lpd_list is not None):
@@ -402,6 +418,13 @@ def evaluate_suite(
     if (parameterization == 'individual') != (input_feature_library_case is None):
         raise ValueError('Only parametric models require input_feature_library_case.')
     selection = data_selection(cylinder_type, vr_list, lpd_list)
+    if motion_models is not None:
+        for lpd, vr in selection.bounds:
+            motion_models.select(cylinder_type, vr, lpd)
+    if re is not None:
+        selection.re = re
+    if mstar is not None:
+        selection.mstar = mstar
     if parameterization in ('vr', 'vr_lpd') and training_vr_list is None:
         training_vr_list = list(selection.vrs)
     if parameterization in ('lpd', 'vr_lpd') and training_lpd_list is None:
@@ -411,6 +434,12 @@ def evaluate_suite(
         optimizer_case=optimizer_case, fit_window_case=fit_window_case, parameterization=parameterization,
         training_vr_list=training_vr_list, training_lpd_list=training_lpd_list, results_root=results_root,
         filtering_case=filtering_case)
+    if report_subdirectory is not None:
+        options['report_subdirectory'] = report_subdirectory
+    if re is not None:
+        options['re'] = re
+    if mstar is not None:
+        options['mstar'] = mstar
     lpds = None if cylinder_type == 'single' else selection.lpds
     windows = [data_selection(cylinder_type, selection.vrs, lpds, fit_window_case=path) for path in derivative_window_cases]
     integral_selection = data_selection(cylinder_type, selection.vrs, lpds, fit_window_case=integral_window_case)
@@ -431,7 +460,7 @@ def evaluate_suite(
     tasks = [('derivative', window, Path(path).resolve() in spectral_paths)
              for path, window in zip(derivative_window_cases, windows)]
     tasks.append(('integral', integral_selection, True))
-    if dynamics_case in (4, 5):
+    if dynamics_case in (4, 6, 7):
         tasks.append(('coupled_integral', integral_selection, True))
     layout = get_case_layout(dynamics_case, cylinder_type)
     for kind, window, spectral in tasks:
@@ -439,9 +468,14 @@ def evaluate_suite(
         if kind == 'derivative':
             names = add_dot_text(names)
         elif kind == 'coupled_integral':
-            names = [name for cylinder in layout.cylinder_ids for name in
-                     (f'h_{cylinder}', rf'\dot{{h}}_{cylinder}', f'C_{{L{cylinder}}}', rf'\dot{{C}}_{{L{cylinder}}}')]
-        folder = _summary_folder(directories, window, options)
+            names = complete_state_names(dynamics_case, cylinder_type)
+        task_subdirectory = report_subdirectory
+        task_options = options
+        task_phase = phase_comparison and (kind == 'coupled_integral' or kind == 'integral' and dynamics_case in (1, 2))
+        if kind == 'coupled_integral' and motion_models is not None:
+            task_subdirectory = motion_models.report_folder()
+            task_options = dict(options, report_subdirectory=task_subdirectory)
+        folder = _summary_folder(directories, window, task_options)
         folder.mkdir(parents=True, exist_ok=True)
         rows = []
         for lpd, vr in window.bounds:
@@ -455,15 +489,31 @@ def evaluate_suite(
             individual = training_directory(report_folder/f'VR = {vr}'/'analysis',
                 'individual', [dict(VR=vr, LpD=lpd, requested_tstar0=start, requested_tstarf=stop)])
             individual /= 'evaluation_window='+window.window_name
+            individual_subdirectory = task_subdirectory
+            if kind == 'coupled_integral' and motion_models is not None:
+                individual_subdirectory = motion_models.report_folder(motion_models.select(cylinder_type, vr, lpd))
+            if individual_subdirectory is not None:
+                individual /= individual_subdirectory
+            if report_metadata is not None:
+                _write_json(individual/'hybrid_manifest.json', report_metadata)
             print(f'{kind}: VR={vr}'+('' if lpd is None else f', L/D={lpd}')+
                   f', {window.window_name}, t*={start}..{stop}', flush=True)
             record = None
             try:
-                evaluation_options = options
+                evaluation_options = {name:value for name,value in options.items() if name != 'report_subdirectory'}
                 if model_directories is not None:
-                    evaluation_options = dict(options,model_dir=directories[key])
+                    evaluation_options = dict(evaluation_options,model_dir=directories[key])
                     if not (directories[key]/'training.json').is_file():
                         evaluation_options.update(fit_window_case=None,training_vr_list=None,training_lpd_list=None)
+                if model_adapter is not None:
+                    evaluation_options['model_adapter'] = model_adapter
+                if individual_subdirectory is not None:
+                    evaluation_options['report_directory'] = individual/'time_domain'
+                if kind == 'coupled_integral':
+                    if structural_mstar is not None:
+                        evaluation_options['structural_mstar'] = structural_mstar
+                    if motion_models is not None:
+                        evaluation_options['case_3_model'] = motion_models
                 record = evaluate_sindy(**evaluation_options, cylinder_type=cylinder_type, vr_list=[vr],
                     lpd_list=None if lpd is None else [lpd],
                     evaluation_type='derivative' if kind == 'derivative' else 'integral',
@@ -479,7 +529,7 @@ def evaluate_suite(
                     row['values'] = {name: _finite(record['metrics'][name]['NRMSE']) for name in names}
                     if spectral:
                         row['spectral'] = _spectral_report(record, individual, kind,
-                                                         phase_comparison=phase_comparison and kind == 'integral')
+                                                         phase_comparison=task_phase)
             except (ValueError, RuntimeError, OSError, FloatingPointError, OverflowError) as error:
                 row['error'] = str(error)
                 failures.append(dict(kind=kind, window=window.window_name, VR=vr,
@@ -497,7 +547,7 @@ def evaluate_suite(
             group_folder.mkdir(parents=True, exist_ok=True)
             _nrmse_heatmap(group, names, list(window.vrs), group_folder/f'{kind}_nrmse_heatmap.png')
             if spectral:
-                _trend(group, names, group_folder, kind, phase_comparison=phase_comparison and kind == 'integral',
+                _trend(group, names, group_folder, kind, phase_comparison=task_phase,
                        cylinder_ids=layout.cylinder_ids)
         if cylinder_type == 'two_tandem':
             frame = pd.DataFrame([dict(VR=row['VR'], LpD=row['LpD'], **row['values']) for row in rows],
@@ -508,7 +558,11 @@ def evaluate_suite(
                                figure_scale=TANDEM_IVP_HEATMAP_SCALE
                                if kind in ('integral', 'coupled_integral') else 1.)
         path = folder/f'{kind}_suite_summary.json'
+        if report_metadata is not None:
+            _write_json(folder/'hybrid_manifest.json', report_metadata)
         _write_json(path, dict(kind=kind, cylinder_type=cylinder_type, variables=names, evaluation_window=window.window_name,
+                              **(dict(motion_models=[model.manifest() for model in motion_models.models],
+                                      exact_kinematic_identities=True) if kind == 'coupled_integral' and motion_models is not None else {}),
                               records=rows, failures=[row for row in failures if row['kind'] == kind and row['window'] == window.window_name]))
         summaries.append(str(path))
     if weight_heatmap:

@@ -28,7 +28,7 @@ def plot_derivatives(
 ) -> list[Path]:
     """Differentiate full records in tau, crop in t*, and plot only computed Xdot.
 
-    Case layouts are identical to training/assessment; Cases 2/4/5 also include
+    Case layouts are identical to training/assessment; Cases 2/4/7 also include
     the second lift derivative. No raw derivative comparison or IVP is run.
     Figures use t* horizontally; differentiated values remain rates in tau.
     JSON companions record names, differentiator settings and actual intervals.

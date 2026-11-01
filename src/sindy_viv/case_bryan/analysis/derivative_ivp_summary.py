@@ -60,7 +60,7 @@ def plot_derivative_ivp_errors(
                     last_error = error
             else:
                 if not allow_missing:
-                    raise FileNotFoundError(f'{last_error} Run script/assess_derivative.py for these bounds first.') from last_error
+                    raise FileNotFoundError(f'{last_error} Call assess_derivatives for these bounds first.') from last_error
                 missing.append(dict(VR=vr, LpD=lpd, reason=str(last_error)))
                 continue
             metrics = payload['metrics']
@@ -72,7 +72,7 @@ def plot_derivative_ivp_errors(
             sources.append(dict(VR=vr, LpD=lpd, path=str(path), tstar_region=payload['tstar_region'],
                                 requested_tstar0=start, requested_tstarf=stop, integration_method=method))
     if not rows:
-        raise FileNotFoundError('No matching derivative IVP reports. Run script/assess_derivative.py first.')
+        raise FileNotFoundError('No matching derivative IVP reports. Call assess_derivatives first.')
     if len(methods) != 1:
         raise ValueError('Saved IVP reports use different integration methods; select --integration_method.')
     frame = pd.DataFrame(rows)

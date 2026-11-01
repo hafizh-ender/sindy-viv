@@ -7,14 +7,14 @@ required differentiation.
 
 | Module | Functions/classes | Use and relationship |
 | --- | --- | --- |
-| `case_layout.py` | `CaseLayout`, `get_case_layout` | Describe Cases 1-5 and their ordered measured, state, control and lift-rate names. Every fitting/evaluation path uses these layouts. |
+| `case_layout.py` | `CaseLayout`, `get_case_layout` | Describe Cases 1, 2, 3, 4, 6, 7 and their ordered measured, state, control and lift-rate names. Every fitting/evaluation path uses these layouts. |
 | `trajectory.py` | `PreparedTrajectory`, `prepare_trajectory` | Construct canonical state/control arrays and optional derivative targets on tau. |
 | `trajectory.py` | `append_parameter_columns`, `PreparedTrajectory.with_parameters` | Append constants after measured controls while preserving sample order and data precision. |
 | `filtering.py` | `SavgolFilter`, `ButterworthFilter`, `MovingAverageFilter` | Callable SciPy smoothing objects accepting `(data, time)` and returning same-shape measurements. |
 | `optimizer.py` | `prepare_optimizer`, `prepare_constrained_sr3` | Instantiate an optimizer descriptor or build named kinematic/structural coefficient equalities. |
 | `input.py` | `prepare_input_single_individual`, `prepare_input_two_tandem_individual` | Historical tuple-returning adapters over canonical trajectory preparation. |
 | `input.py` | `prepare_input_*_parametric_vr`, `prepare_input_two_tandem_parametric_lpd`, `prepare_input_two_tandem_parametric_vr_lpd` | Adapt one or multiple trajectories with the selected constant parameters. |
-| `input.py` | `prepare_input_single_case_1` through `_case_5`, tandem equivalents, and case-specific parameterized variants | Explicit-case aliases for existing callers; use `prepare_trajectory` for new code. |
+| `input.py` | `prepare_input_single_case_1` through `_case_4`, `_case_6`, `_case_7`, tandem equivalents, and case-specific parameterized variants | Explicit-case aliases for existing callers; use `prepare_trajectory` for new code. |
 | `input.py` | `iter_prepared_trajectories` | Yield prepared trajectory records for the selected parameter grouping. |
 
 Private helpers validate array/name consistency, attach constants and route the
@@ -50,11 +50,11 @@ channel, constructs the Case 2 lift-rate states, and computes derivative
 targets. State/control dtype defaults to float64 independently of time dtype.
 `as_tuple()` exposes the older four/six-value training tuple. With
 `with_derivatives=False`, preparation omits regression targets but still derives
-lift rates needed by Cases 2/4/5; feature assessment and IVP references use this
+lift rates needed by Cases 2/4/7; feature assessment and IVP references use this
 mode. `with_parameters` copies controls into an array followed by constant
 parameter columns and returns a new record.
 
-For Cases 2/4/5, `CLdot` is the first derivative of filtered lift. When derivative
+For Cases 2/4/7, `CLdot` is the first derivative of filtered lift. When derivative
 targets are requested, `CLddot` is computed directly from that same filtered
 lift through `differentiation.perform_second_derivative`: finite differences
 use `d=2`, and `SavitzkyGolayDerivative` uses `deriv=2` with the configured
@@ -67,8 +67,10 @@ evaluation and weak training request only lift-rate states, so do not compute
 `CLddot` targets. All derivatives use tau before the fitting-window crop.
 
 Cases 1/2 model motion and lift; Case 3 models motion with measured lift as a
-control; Cases 4/5 model lift with measured motion controls. Case 4 includes
-measured acceleration whereas Case 5 does not. These distinctions determine
+control; Case 4 models the lift/rate pair with measured h/hdot/hddot controls.
+Case 6 models only CL with h/hdot controls. Case 7 models only CLdot with
+h/hdot/CL controls; its measured lift is differentiated to build the state.
+Cases 6/7 never load acceleration. Case 5 is no longer supported. These distinctions determine
 the response-library input order, not a caller-defined column sort.
 
 ## Configure filters and optimizers

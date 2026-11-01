@@ -37,19 +37,19 @@ def model_differentiator_name(
     path; only its stem is returned, without opening the file.
 
     Parameters:
-        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
+        dynamics_case (int): Physical dynamics case, one of 1, 2, 3, 4, 6, or 7.
 
         differentiator_case (str, PathLike[str], or None): Differentiator configuration path identifying the fitted model.
         weak (bool): Whether to locate weak-model results.
     """
     match dynamics_case:
-        case 1 | 2 | 3 | 4 | 5:
+        case 1 | 2 | 3 | 4 | 6 | 7:
             pass
         case _:
-            raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
+            raise ValueError("dynamics_case must be 1, 2, 3, 4, 6, or 7; Case 5 was removed.")
 
     # Cases without lift-rate states require no training differentiation for weak fits.
-    if weak and dynamics_case in (1, 3):
+    if weak and dynamics_case in (1, 3, 6):
         return "no_differentiator"
 
     if differentiator_case is None:

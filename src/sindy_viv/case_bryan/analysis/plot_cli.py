@@ -88,7 +88,7 @@ def derivative_main(cylinder_type: str):
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         default=1,
     )
     parser.add_argument(
@@ -222,7 +222,7 @@ def derivative_ivp_summary_main():
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         default=2,
     )
     parser.add_argument(
@@ -267,7 +267,7 @@ def error_plot_main(cylinder_type: str | None, evaluation_type: str, *, heatmap_
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
     )
     parser.add_argument(
@@ -336,6 +336,7 @@ def error_plot_main(cylinder_type: str | None, evaluation_type: str, *, heatmap_
             '--coupled_motion',
             action='store_true',
         )
+    parser.add_argument('--case_3_model', nargs='+', help='Select the Case 3 donors used by saved complete Case 6/7 IVPs; omit for theoretical motion.')
     if heatmap_summary:
         comparison = 'IVP reconstruction' if evaluation_type == 'integral' else 'derivative reconstruction'
         parser.description = f'Plot title-free heatmaps of saved SINDy {comparison} NRMSE.'

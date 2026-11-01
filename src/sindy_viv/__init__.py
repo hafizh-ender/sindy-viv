@@ -9,8 +9,7 @@ def main() -> int:
         prog='sindy-viv',
         description='SINDy models and evaluation tools for cylinder VIV data.',
         epilog=(
-            'From the repository, run python script/perform_sindy_single_individual.py --help or '
-            'python script/evaluate_integral_sindy_single_individual.py --help. Python API: '
+            'Python API: '
             'sindy_viv.case_bryan.compute_sindy.compute_sindy and '
             'sindy_viv.case_bryan.evaluate_sindy.evaluate_sindy.'
         ),

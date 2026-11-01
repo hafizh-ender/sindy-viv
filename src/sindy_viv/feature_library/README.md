@@ -68,8 +68,8 @@ import numpy as np
 import pysindy as ps
 from sindy_viv.feature_library import assess_feature_matrix, assess_feature_library
 
-# Any precomputed dense SINDy feature matrix Theta:
-result = assess_feature_matrix(theta, feature_names)
+# Assess the selected matrix and its matching names from the example above:
+result = assess_feature_matrix(selected_theta, names)
 print(result.condition_number, result.rank)
 correlation = result.correlation
 

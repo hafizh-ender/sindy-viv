@@ -30,14 +30,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--source_dir',
         type=Path,
-        default=Path('state/clddot_comparison'),
-        help='Directory containing comparison CSVs and summary.json. Default: state/clddot_comparison.',
+        default=Path('results/diagnostics/clddot_comparison'),
+        help='Directory containing comparison CSVs and summary.json. Default: results/diagnostics/clddot_comparison.',
     )
     parser.add_argument(
         '--output_dir',
         type=Path,
-        default=Path('state/clddot_integration'),
-        help='Destination for reconstruction plots, CSVs and JSON. Default: state/clddot_integration.',
+        default=Path('results/diagnostics/clddot_integration'),
+        help='Destination for reconstruction plots, CSVs and JSON. Default: results/diagnostics/clddot_integration.',
     )
     parser.add_argument(
         '--zoom_cycles',

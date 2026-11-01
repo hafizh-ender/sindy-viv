@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     argument_parser.add_argument(
         '--dynamics_case',
         type=int,
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
         help='Dynamics case to perform WeakSINDy on.',
     )
@@ -43,7 +44,7 @@ def parse_args() -> argparse.Namespace:
         '--differentiator_case',
         type=str,
         required=False,
-        help='Differentiator config for lift-rate states in cases 2, 4 and 5.',
+        help='Differentiator config for lift-rate states in cases 2, 4 and 7.',
     )
     argument_parser.add_argument(
         '--state_feature_library_case',

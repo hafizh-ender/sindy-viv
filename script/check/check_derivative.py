@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sindy_viv.case_bryan.analysis.integration import integrate_acceleration
+# from sindy_viv.case_bryan.analysis.integration import integrate_acceleration
 from sindy_viv.case_bryan.constants import (
     SINGLE_CYLINDER_MSTAR, SINGLE_CYLINDER_MSTAR_TRUE, SINGLE_CYLINDER_RE,
     TWO_TANDEM_CYLINDERS_MSTAR, TWO_TANDEM_CYLINDERS_MSTAR_TRUE, TWO_TANDEM_CYLINDERS_RE,
@@ -162,16 +162,25 @@ def main() -> None:
                                                             rf'\ddot{{h}}_{cylinder}')
                 cl_name = f'C_{{L{cylinder}}}'
                 
-                recorded_h = data[region, variable_names.index(h_name)]
-                recorded_hdot = data[region, variable_names.index(velocity_name)]
-                recorded_hddot = data[region, variable_names.index(acceleration_name)]
-                recorded_cl = data[region, variable_names.index(cl_name)]
+                processed_recorded_h = data[region, variable_names.index(h_name)]
+                processed_recorded_hdot = data[region, variable_names.index(velocity_name)]
+                processed_recorded_hddot = data[region, variable_names.index(acceleration_name)]
+                processed_recorded_cl = data[region, variable_names.index(cl_name)]
+                
+                recorded_h = processed_recorded_h[1:]
+                recorded_hdot = processed_recorded_hdot[1:]
+                recorded_hddot = processed_recorded_hddot[:-1]
+                recorded_cl = processed_recorded_cl[1:]
+                
+                print(len(recorded_h), len(recorded_hdot), len(recorded_hddot), len(recorded_cl))
+                
                 
                 shifted_time = selected_time[:-1]
                 shifted_h = recorded_h[:-1]
                 shifted_hdot = recorded_hdot[:-1]
                 shifted_cl = recorded_cl[:-1]
                 shifted_hddot = recorded_hddot[1:]
+                
                 
                 stiffness = 4 * np.pi**2
                 coupling = 2 * vr**2 / (np.pi * dynamics_mstar)
@@ -358,23 +367,23 @@ def main() -> None:
                 print(f'  NRMSE(Recorded hdot vs Simulated hdot from simulated hddot from recorded CL): {nrmse_case_6_hdot*100:.4f}%')
                 print(f'  NRMSE(Recorded hddot vs Simulated hddot from recorded CL): {nrmse_case_6_hddot*100:.4f}%')
                 
-                fig, ax = plt.subplots(figsize=(8, 4))
-                # ax.plot(shifted_time * vr, shifted_h, label='Shifted h', color='blue', linewidth=LINE_WIDTH)
-                # ax.plot(shifted_time * vr, simulated_shifted_h_case_5, label='Simulated h from Shifted h and CL', color='orange', linewidth=LINE_WIDTH)
-                ax.plot(selected_time * vr, recorded_h, label='Recorded h', color='blue', linewidth=LINE_WIDTH)
-                # ax.plot(selected_time * vr, simulated_h_case_6, label='Simulated h from recorded h and CL', color='orange', linewidth=LINE_WIDTH)
-                ax.plot(selected_time * vr, simulated_h_case_1, label='Simulated h from recorded hdot and hddot', color='green', linewidth=LINE_WIDTH)
-                # ax.plot(selected_time * vr, simulated_h_case_2, label='Simulated h from simulated hdot and recorded hddot', color='red', linewidth=LINE_WIDTH)
-                ax.set_xlabel('t*')
-                ax.set_ylabel('Displacement')
-                figure_parameters = {'V_R': vr}
-                if lpd is not None:
-                    figure_parameters['L/D'] = lpd
-                ax.set_title(f'Cylinder {cylinder}, '+format_parameter_title(figure_parameters))
-                ax.legend()
-                ax.grid()
-                ax.set_xlim(shifted_time[0] * vr, shifted_time[-1] * vr)
-                plt.show()
+                # fig, ax = plt.subplots(figsize=(8, 4))
+                # # ax.plot(shifted_time * vr, shifted_h, label='Shifted h', color='blue', linewidth=LINE_WIDTH)
+                # # ax.plot(shifted_time * vr, simulated_shifted_h_case_5, label='Simulated h from Shifted h and CL', color='orange', linewidth=LINE_WIDTH)
+                # ax.plot(selected_time * vr, recorded_h, label='Recorded h', color='blue', linewidth=LINE_WIDTH)
+                # # ax.plot(selected_time * vr, simulated_h_case_6, label='Simulated h from recorded h and CL', color='orange', linewidth=LINE_WIDTH)
+                # ax.plot(selected_time * vr, simulated_h_case_1, label='Simulated h from recorded hdot and hddot', color='green', linewidth=LINE_WIDTH)
+                # # ax.plot(selected_time * vr, simulated_h_case_2, label='Simulated h from simulated hdot and recorded hddot', color='red', linewidth=LINE_WIDTH)
+                # ax.set_xlabel('t*')
+                # ax.set_ylabel('Displacement')
+                # figure_parameters = {'V_R': vr}
+                # if lpd is not None:
+                #     figure_parameters['L/D'] = lpd
+                # ax.set_title(f'Cylinder {cylinder}, '+format_parameter_title(figure_parameters))
+                # ax.legend()
+                # ax.grid()
+                # ax.set_xlim(shifted_time[0] * vr, shifted_time[-1] * vr)
+                # plt.show()
 
                 # # Now we use numerical differentiation
                 # # differentiator_config['kwargs']['order'] = 4

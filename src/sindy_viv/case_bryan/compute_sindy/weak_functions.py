@@ -67,10 +67,10 @@ def compute_weak_sindy(
     weak_feature_library_case: str | PathLike[str] | None = None,
     filtering_case: str | PathLike[str] | None = None,
 ) -> ps.SINDy | dict[float | tuple[float, float], ps.SINDy]:
-    """Fit weak dynamics for Cases 1-5 and all cylinder/parameter selections.
+    """Fit weak dynamics for Cases 1, 2, 3, 4, 6, and 7 and all cylinder/parameter selections.
 
     The selectors, return mapping, libraries, optimizers and artifact formats
-    match compute_sindy. Only Cases 2/4/5 require differentiator_case, to build
+    match compute_sindy. Only Cases 2/4/7 require differentiator_case, to build
     lift-rate states on full trajectories; weak targets are never differentiated.
     filtering_case optionally smooths all loaded measurements before lift-rate
     construction and cropping, with a separate config-named results folder.
@@ -79,7 +79,7 @@ def compute_weak_sindy(
     it with tweak0/tweakf. Time remains float64 tau=t*/VR throughout fitting.
 
     weak_feature_library_case selects a WeakPDELibrary integration descriptor
-    (default configs/weak_feature_library/default.json), combined with the
+    (the package's bundled weak_feature_library/default.json), combined with the
     response/parameter configs. Explicit K/H_xt/p override its settings.
     K windows per trajectory use phi=(1-z**2)**p, p>=1. H_xt is a half width
     in tau, defaulting to each cropped trajectory span/20. random_state seeds
@@ -106,8 +106,8 @@ def compute_weak_sindy(
         raise ValueError("Use either fit_window_case or tweak0/tweakf, not both.")
 
     # Validate the dynamics case
-    if dynamics_case not in (1, 2, 3, 4, 5):
-        raise ValueError("dynamics_case must be 1, 2, 3, 4, or 5.")
+    if dynamics_case not in (1, 2, 3, 4, 6, 7):
+        raise ValueError("dynamics_case must be 1, 2, 3, 4, 6, or 7; Case 5 was removed.")
 
     if cylinder_type == "single":
         case_name = SINGLE_CYLINDER_CASE_NAME
@@ -151,7 +151,8 @@ def compute_weak_sindy(
         raise ValueError("All fits require state_feature_library_case.")
 
     if weak_feature_library_case is None:
-        weak_feature_library_case = Path(__file__).resolve().parents[4] / "configs" / "weak_feature_library" / "default.json"
+        from sindy_viv.defaults import default_config_path
+        weak_feature_library_case = default_config_path('weak_feature_library', 'default.json')
     weak_library_config = resolve_weak_library_config(load_config(weak_feature_library_case), K, H_xt, p)
     K, H_xt, p = (weak_library_config['kwargs'][name] for name in ('K', 'H_xt', 'p'))
     validate_weak_settings(K, H_xt, p, random_state)

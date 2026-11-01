@@ -1,0 +1,330 @@
+{
+  "experiment_id": "full_recompute_20261101_v1",
+  "created_utc": "2026-11-01T13:07:39.945372+00:00",
+  "source": "full new CFD-data fits; no archived fitted models, metrics or parent lists",
+  "groups": {
+    "single": {
+      "budget": {
+        "cases": 6,
+        "ols": 30,
+        "ridge_only": 84,
+        "stlsq_only": 84,
+        "fixed": 198,
+        "conditional_max": 168,
+        "total_max": 366
+      },
+      "config": {
+        "experiment_id": "full_recompute_20261101_v1",
+        "configuration_version": 1,
+        "group": "single",
+        "cylinder_type": "single",
+        "environment": "local",
+        "vr": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "lpd": null,
+        "dynamics_case": 6,
+        "parameterization": "individual",
+        "training_window": "configs/fit_window/single/sinusoidal.json",
+        "validation_window": "configs/fit_window/single/sinusoidal_evaluation.json",
+        "filtering": "configs/filtering/butterworth_single_flim2.json",
+        "differentiator": "configs/differentiator/finite_difference_basic.json",
+        "polynomial_degrees": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "regularized_degrees": [
+          3,
+          5
+        ],
+        "alphas": [
+          1e-06,
+          0.0001,
+          0.001,
+          0.01,
+          0.1,
+          0.5,
+          5.0
+        ],
+        "thresholds": [
+          0.001,
+          0.005,
+          0.01,
+          0.05,
+          0.1,
+          0.5,
+          1.0
+        ],
+        "normalize_columns": false,
+        "unbias": false,
+        "include_bias": true,
+        "rank_cutoff": "max(N,P)*float64_eps",
+        "rank_driver": "gelsd",
+        "ridge_solver": "svd",
+        "sequential_max_iter": 100,
+        "motion_source": "theoretical",
+        "solver": {
+          "method": "RK45",
+          "rtol": 1e-06,
+          "atol": 1e-09,
+          "max_state_factor": 10.0,
+          "wall_seconds": 120.0
+        }
+      }
+    },
+    "tandem_lpd_1p5": {
+      "budget": {
+        "cases": 3,
+        "ols": 15,
+        "ridge_only": 42,
+        "stlsq_only": 42,
+        "fixed": 99,
+        "conditional_max": 84,
+        "total_max": 183
+      },
+      "config": {
+        "experiment_id": "full_recompute_20261101_v1",
+        "configuration_version": 1,
+        "group": "tandem_lpd_1p5",
+        "cylinder_type": "two_tandem",
+        "environment": "hpc",
+        "vr": [
+          5,
+          10,
+          14
+        ],
+        "lpd": 1.5,
+        "dynamics_case": 6,
+        "parameterization": "individual",
+        "training_window": "configs/fit_window/two_tandem/sinusoidal.json",
+        "validation_window": "configs/fit_window/two_tandem/sinusoidal_evaluation.json",
+        "filtering": "configs/filtering/butterworth_two_tandem_flim2.json",
+        "differentiator": "configs/differentiator/finite_difference_basic.json",
+        "polynomial_degrees": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "regularized_degrees": [
+          3,
+          5
+        ],
+        "alphas": [
+          1e-06,
+          0.0001,
+          0.001,
+          0.01,
+          0.1,
+          0.5,
+          5.0
+        ],
+        "thresholds": [
+          0.001,
+          0.005,
+          0.01,
+          0.05,
+          0.1,
+          0.5,
+          1.0
+        ],
+        "normalize_columns": false,
+        "unbias": false,
+        "include_bias": true,
+        "rank_cutoff": "max(N,P)*float64_eps",
+        "rank_driver": "gelsd",
+        "ridge_solver": "svd",
+        "sequential_max_iter": 100,
+        "motion_source": "theoretical",
+        "solver": {
+          "method": "RK45",
+          "rtol": 1e-06,
+          "atol": 1e-09,
+          "max_state_factor": 10.0,
+          "wall_seconds": 120.0
+        }
+      }
+    },
+    "tandem_lpd_3p0": {
+      "budget": {
+        "cases": 3,
+        "ols": 15,
+        "ridge_only": 42,
+        "stlsq_only": 42,
+        "fixed": 99,
+        "conditional_max": 84,
+        "total_max": 183
+      },
+      "config": {
+        "experiment_id": "full_recompute_20261101_v1",
+        "configuration_version": 1,
+        "group": "tandem_lpd_3p0",
+        "cylinder_type": "two_tandem",
+        "environment": "hpc",
+        "vr": [
+          5,
+          10,
+          14
+        ],
+        "lpd": 3.0,
+        "dynamics_case": 6,
+        "parameterization": "individual",
+        "training_window": "configs/fit_window/two_tandem/sinusoidal.json",
+        "validation_window": "configs/fit_window/two_tandem/sinusoidal_evaluation.json",
+        "filtering": "configs/filtering/butterworth_two_tandem_flim2.json",
+        "differentiator": "configs/differentiator/finite_difference_basic.json",
+        "polynomial_degrees": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "regularized_degrees": [
+          3,
+          5
+        ],
+        "alphas": [
+          1e-06,
+          0.0001,
+          0.001,
+          0.01,
+          0.1,
+          0.5,
+          5.0
+        ],
+        "thresholds": [
+          0.001,
+          0.005,
+          0.01,
+          0.05,
+          0.1,
+          0.5,
+          1.0
+        ],
+        "normalize_columns": false,
+        "unbias": false,
+        "include_bias": true,
+        "rank_cutoff": "max(N,P)*float64_eps",
+        "rank_driver": "gelsd",
+        "ridge_solver": "svd",
+        "sequential_max_iter": 100,
+        "motion_source": "theoretical",
+        "solver": {
+          "method": "RK45",
+          "rtol": 1e-06,
+          "atol": 1e-09,
+          "max_state_factor": 10.0,
+          "wall_seconds": 120.0
+        }
+      }
+    },
+    "tandem_lpd_4p0": {
+      "budget": {
+        "cases": 3,
+        "ols": 15,
+        "ridge_only": 42,
+        "stlsq_only": 42,
+        "fixed": 99,
+        "conditional_max": 84,
+        "total_max": 183
+      },
+      "config": {
+        "experiment_id": "full_recompute_20261101_v1",
+        "configuration_version": 1,
+        "group": "tandem_lpd_4p0",
+        "cylinder_type": "two_tandem",
+        "environment": "hpc",
+        "vr": [
+          5,
+          10,
+          14
+        ],
+        "lpd": 4.0,
+        "dynamics_case": 6,
+        "parameterization": "individual",
+        "training_window": "configs/fit_window/two_tandem/sinusoidal.json",
+        "validation_window": "configs/fit_window/two_tandem/sinusoidal_evaluation.json",
+        "filtering": "configs/filtering/butterworth_two_tandem_flim2.json",
+        "differentiator": "configs/differentiator/finite_difference_basic.json",
+        "polynomial_degrees": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "regularized_degrees": [
+          3,
+          5
+        ],
+        "alphas": [
+          1e-06,
+          0.0001,
+          0.001,
+          0.01,
+          0.1,
+          0.5,
+          5.0
+        ],
+        "thresholds": [
+          0.001,
+          0.005,
+          0.01,
+          0.05,
+          0.1,
+          0.5,
+          1.0
+        ],
+        "normalize_columns": false,
+        "unbias": false,
+        "include_bias": true,
+        "rank_cutoff": "max(N,P)*float64_eps",
+        "rank_driver": "gelsd",
+        "ridge_solver": "svd",
+        "sequential_max_iter": 100,
+        "motion_source": "theoretical",
+        "solver": {
+          "method": "RK45",
+          "rtol": 1e-06,
+          "atol": 1e-09,
+          "max_state_factor": 10.0,
+          "wall_seconds": 120.0
+        }
+      }
+    }
+  },
+  "budget": {
+    "cases": 15,
+    "ols": 75,
+    "ridge_only": 210,
+    "stlsq_only": 210,
+    "fixed": 495,
+    "conditional_max": 420,
+    "total_max": 915
+  },
+  "stage_order": [
+    "A:ols",
+    "B:ridge_only",
+    "D:stlsq_only",
+    "C:ridge_stlsq"
+  ],
+  "conditional_selection": {
+    "policy": "new_ridge_two_parents_alpha_ties_v1",
+    "max_distinct_parents_per_case_degree": 2,
+    "failed_ivps_eligible": true,
+    "threshold_fits_per_parent": 7,
+    "parents_from": "new Stage-B checkpoints only"
+  },
+  "numerical_caveat": "Unnormalized polynomial matrices can be rank deficient. GELSD uses cond=max(N,P)*float64_eps. Expanded libraries can increase finite-precision OLS SSE through singular-value truncation. Flag this; do not stop or rescale. Existing full-record, noncausal filtering precedes differentiation/cropping and can share information across training/validation boundaries.",
+  "execution_split": "six single cases local; nine tandem cases in three Slurm allocations"
+}

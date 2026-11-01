@@ -20,7 +20,7 @@ def assessment_parser():
     parser.add_argument(
         '--dynamics_case',
         type=int,
-        choices=(1, 2, 3, 4, 5),
+        choices=(1, 2, 3, 4, 6, 7),
         required=True,
     )
     cylinders = parser.add_mutually_exclusive_group()
@@ -76,10 +76,10 @@ def assessment_parser():
     )
     parser.add_argument(
         '--differentiator_case',
-        default='configs/differentiator/finite_difference_basic.json',
+        default=None,
         help=(
-            'Used only to construct lift-rate states for Cases 2/4/5; full trajectory before '
-            'cropping.'
+            'Used only to construct lift-rate states for Cases 2/4/7; full trajectory before '
+            'cropping. Omitted: the package\'s bundled finite-difference preset.'
         ),
     )
     parser.add_argument(

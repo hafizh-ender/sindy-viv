@@ -80,7 +80,7 @@ def assess_derivatives(
     initial X and report NRMSE versus X. For Cases 1/2/3, also compare D(h)
     with recorded hdot and D(recorded hdot) with recorded hddot, per cylinder.
     Recorded comparisons use matching timestamps without shifting the data.
-    Cases 4/5 contain no motion states, so only their lift-state IVP is checked.
+    Cases 4/6/7 contain no motion states, so only their lift-state IVP is checked.
     Optional filtering_case smooths full records before differentiation.
     fit_window_case supplies per-trajectory reporting bounds; do not combine it
     with explicit tstar0/tstarf. Full-record filtering/differentiation precede cropping.

@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "cylinder_type": "single",
+  "parameterization": "vr",
+  "dynamics_case": 3,
+  "time_coordinate": "tau=t*/VR",
+  "trajectory_order": "L/D outermost, VR innermost; preserves CLI selection order",
+  "trajectories": [
+    {
+      "VR": 3.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 600.0,
+      "tstar_region": [
+        100.00048410000001,
+        599.9994405000001
+      ],
+      "tau_region": [
+        33.3334947,
+        199.99981350000004
+      ],
+      "samples": 433013,
+      "total_samples": 600000
+    },
+    {
+      "VR": 4.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 600.0,
+      "tstar_region": [
+        100.00048410000001,
+        599.9994405000001
+      ],
+      "tau_region": [
+        25.000121025000002,
+        149.99986012500003
+      ],
+      "samples": 433013,
+      "total_samples": 600000
+    },
+    {
+      "VR": 5.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 600.0,
+      "tstar_region": [
+        100.00048410000002,
+        599.9994405000001
+      ],
+      "tau_region": [
+        20.000096820000003,
+        119.99988810000002
+      ],
+      "samples": 433013,
+      "total_samples": 600000
+    },
+    {
+      "VR": 6.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 600.0,
+      "tstar_region": [
+        100.00048410000001,
+        599.9994405000001
+      ],
+      "tau_region": [
+        16.66674735,
+        99.99990675000002
+      ],
+      "samples": 433013,
+      "total_samples": 600000
+    },
+    {
+      "VR": 7.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 1000.0,
+      "tstar_region": [
+        100.00048410000001,
+        999.9990675
+      ],
+      "tau_region": [
+        14.285783442857143,
+        142.85700964285715
+      ],
+      "samples": 779423,
+      "total_samples": 1000000
+    },
+    {
+      "VR": 8.0,
+      "LpD": null,
+      "requested_tstar0": 100.0,
+      "requested_tstarf": 600.0,
+      "tstar_region": [
+        100.00048410000001,
+        599.9994405000001
+      ],
+      "tau_region": [
+        12.500060512500001,
+        74.99993006250001
+      ],
+      "samples": 433013,
+      "total_samples": 600000
+    }
+  ],
+  "data_dtype": "float64",
+  "Re": 150.0,
+  "mstar": 5.1,
+  "constraint_mstar": 5.092958178940651,
+  "configurations": {
+    "differentiator": {
+      "module": "pysindy.differentiation.finite_difference",
+      "class_name": "FiniteDifference",
+      "kwargs": {
+        "order": 2
+      }
+    },
+    "optimizer": {
+      "module": "pysindy.optimizers.stlsq",
+      "class_name": "STLSQ",
+      "kwargs": {
+        "threshold": 0.1,
+        "alpha": 0,
+        "normalize_columns": false,
+        "verbose": true
+      }
+    },
+    "state_feature_library": {
+      "module": "pysindy.feature_library.polynomial_library",
+      "class_name": "PolynomialLibrary",
+      "kwargs": {
+        "degree": 1,
+        "include_bias": true
+      }
+    },
+    "parameter_feature_library": {
+      "module": "pysindy.feature_library.polynomial_library",
+      "class_name": "PolynomialLibrary",
+      "kwargs": {
+        "degree": 2,
+        "include_bias": true
+      }
+    },
+    "filtering": {
+      "module": "sindy_viv.case_bryan.prepare_sindy.filtering",
+      "class_name": "ButterworthFilter",
+      "kwargs": {
+        "cutoff": 0.00461879897,
+        "order": 4,
+        "btype": "lowpass",
+        "normalized": true
+      }
+    }
+  },
+  "filtering": {
+    "name": "butterworth_single_flim2",
+    "source": ".\\configs\\filtering\\butterworth_single_flim2.json",
+    "scope": "full measured trajectory before differentiation and cropping"
+  },
+  "fit_window": {
+    "name": "overall_reduced",
+    "source": ".\\configs\\fit_window\\single\\overall_reduced.json",
+    "config": {
+      "3": {
+        "tstar0": 100,
+        "tstarf": 600
+      },
+      "4": {
+        "tstar0": 100,
+        "tstarf": 600
+      },
+      "5": {
+        "tstar0": 100,
+        "tstarf": 600
+      },
+      "6": {
+        "tstar0": 100,
+        "tstarf": 600
+      },
+      "7": {
+        "tstar0": 100,
+        "tstarf": 1000
+      },
+      "8": {
+        "tstar0": 100,
+        "tstarf": 600
+      }
+    }
+  }
+}

@@ -120,7 +120,7 @@ def main() -> int:
         predecessor = json.loads(args.after_study.read_text(encoding='utf-8'))
         if predecessor['phase'] not in ('Finished', 'FinishedWithErrors'):
             raise RuntimeError('The overnight study has not completed all stages; theoretical evaluation will not start.')
-    output = args.output_dir or REPO / 'state/theoretical_evaluation_runs' / datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%SZ')
+    output = args.output_dir or REPO / 'results/theoretical_evaluation_runs' / datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%SZ')
     output.mkdir(parents=True, exist_ok=True)
     (output / 'model_manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     status = output / 'evaluation_status.json'

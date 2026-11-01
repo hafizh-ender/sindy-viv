@@ -8,11 +8,17 @@ configs/fit_window/
   single/
     overall.json
     first_half.json
+    overall_reduced.json
     sinusoidal.json
+    sinusoidal_evaluation.json
+    sinusoidal_evaluation_longer.json
   two_tandem/
     overall.json
     first_half.json
+    overall_reduced.json
     sinusoidal.json
+    sinusoidal_evaluation.json
+    sinusoidal_evaluation_longer.json
 ```
 
 Single-cylinder configs map VR to the two recorded t* limits:
@@ -41,14 +47,17 @@ JSON object keys are strings. Numeric spellings such as `"2"` and `"2.0"`
 refer to the same LpD or VR; duplicate numeric keys are rejected. Dictionary
 order does not affect which window is assigned to a trajectory.
 
-`null` uses the available endpoint of that trajectory. `overall.json` is ready
-to use and contains the default datasets. `first_half.json` leaves `tstarf`
-as `"TO_BE_FILLED"`; `sinusoidal.json` leaves both endpoints as placeholders.
-Fill the selected trajectories with numeric t* values before using them.
-Unused trajectories may retain their placeholders. First-half/percentage
-endpoints and the interval containing sinusoidal response are supplied by you;
-the category name does not calculate or detect them. Copy a preset if another
-category, such as `first_10_percent.json`, is useful.
+`null` uses the available endpoint of that trajectory. Both `overall.json`
+files are ready to use. The current `overall_reduced`, `sinusoidal`,
+`sinusoidal_evaluation`, and `sinusoidal_evaluation_longer` presets are populated
+for all six single-cylinder trajectories and all 50 tandem pairs. Single-cylinder
+configs also include populated `last_half.json` and `early_sinusoidal.json`
+(the latter selects VR=7 only).
+
+Single-cylinder `first_half.json` still has `TO_BE_FILLED` end bounds; the
+tandem first-half preset is populated. Fill placeholders for every selected
+trajectory before use; unused entries may retain placeholders. Names do not
+automatically detect a sinusoidal interval or compute percentage endpoints.
 
 Pass the same config to standard computation and evaluation:
 
@@ -59,7 +68,7 @@ Pass the same config to standard computation and evaluation:
 
 The config contains no dynamics-case or parameterization setting. For example,
 the window at LpD=2, VR=8 is identical when used in individual, VR-only,
-L/D-only, or joint fitting, and in dynamics cases 1 through 5.
+L/D-only, or joint fitting, and in dynamics Cases 1, 2, 3, 4, 6, and 7.
 
 `training.json` saves the config name, source path, full nested config snapshot,
 and each fitted trajectory's resolved limits, actual endpoints, and sample
@@ -70,6 +79,7 @@ evaluating a held-out VR or LpD absent from the config. Its own `tstar0` and
 `tstarf` still select the scoring/simulation interval independently.
 
 Training accepts only `fit_window_case`; omitting it loads the matching
-`single/overall.json` or `two_tandem/overall.json` from this repository.
+`single/overall.json` or `two_tandem/overall.json` bundled in
+`sindy_viv/presets/fit_window/`. Repository presets are explicit experiment inputs.
 `tstar0` and `tstarf` are evaluation options only; fitting endpoints are read
 from JSON. Older saved models can still be selected with `model_dir`.

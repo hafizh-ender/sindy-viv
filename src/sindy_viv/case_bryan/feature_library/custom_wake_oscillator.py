@@ -71,7 +71,7 @@ def _make_library(
         names (Sequence[str]): Ordered variable names identifying array columns.
 
         cylinder_type (str): Cylinder configuration: single or two_tandem.
-        case (int): Physical dynamics case, one of 1, 2, 3, 4, or 5.
+        case (int): Physical dynamics case, one of 1, 2, 3, 4, 6, or 7.
         restoring (str or Sequence[str]): Selected restoring terms: linear, cubic, or a sequence of these.
         damping (str or Sequence[str]): Selected damping terms: linear, van_der_pol, rayleigh, or a sequence of these.
         coupling (str or Sequence[str]): Selected motion or nonlinear coupling families; acceleration is available only in Case 4.
@@ -224,33 +224,4 @@ class WakeOscillatorCase4Library:
         """
         names = list(get_case_layout(4, cylinder_type).response_names)
         return _make_library(names, cylinder_type, 4, restoring, damping, coupling,
-                             nonlinear_degree, inter_cylinder_degree, include_bias)
-
-
-class WakeOscillatorCase5Library:
-    """Return Case 5 wake terms with displacement/velocity coupling and no acceleration input."""
-
-    def __new__(
-        cls,
-        cylinder_type: CylinderType = 'single',
-        restoring: str | Sequence[str] = 'linear',
-        damping: str | Sequence[str] = 'van_der_pol',
-        coupling: str | Sequence[str] = ('displacement', 'velocity'),
-        nonlinear_degree: int = 3,
-        inter_cylinder_degree: int = 0,
-        include_bias: bool = False,
-    ) -> SelectedPolynomialLibrary:
-        """Build a selected polynomial library using the canonical case response layout.
-
-        Parameters:
-            cylinder_type (str): Cylinder configuration: single or two_tandem. Default: 'single'
-            restoring (str or Sequence[str]): Selected restoring terms: linear, cubic, or a sequence of these. Default: 'linear'
-            damping (str or Sequence[str]): Selected damping terms: linear, van_der_pol, rayleigh, or a sequence of these. Default: 'van_der_pol'
-            coupling (str or Sequence[str]): Selected motion or nonlinear coupling families; acceleration is available only in Case 4. Default: ('displacement', 'velocity')
-            nonlinear_degree (int): Maximum total degree for the selected nonlinear coupling terms. Default: 3
-            inter_cylinder_degree (int): Maximum total degree of matching-channel cross-cylinder products; zero disables them. Default: 0
-            include_bias (bool): Whether to include a constant feature equal to one. Default: False
-        """
-        names = list(get_case_layout(5, cylinder_type).response_names)
-        return _make_library(names, cylinder_type, 5, restoring, damping, coupling,
                              nonlinear_degree, inter_cylinder_degree, include_bias)

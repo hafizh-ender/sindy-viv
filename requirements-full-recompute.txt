@@ -1,0 +1,6 @@
+# Verified local numerical environment; no automatic installation by launchers.
+# Python 3.10 or 3.11; project dependencies remain in pyproject.toml/uv.lock.
+numpy==2.2.6
+scipy==1.15.3
+scikit-learn==1.7.2
+pysindy==2.1.0

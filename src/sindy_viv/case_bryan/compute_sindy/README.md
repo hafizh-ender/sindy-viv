@@ -43,7 +43,7 @@ saved-model paths; `training.json` snapshots its settings. Use the same option
 in evaluation to select the model and filter its reference data. Omit the option
 to retain the existing unfiltered behavior and paths.
 
-All six workflows support `dynamics_case=1` through `5`:
+All six workflows support dynamics Cases **1, 2, 3, 4, 6, and 7**:
 
 | Case | States per cylinder | Measured controls per cylinder |
 | --- | --- | --- |
@@ -51,27 +51,29 @@ All six workflows support `dynamics_case=1` through `5`:
 | 2 | h, hdot, CL, CLdot | None |
 | 3 | h, hdot | CL |
 | 4 | CL, CLdot | h, hdot, hddot |
-| 5 | CL, CLdot | h, hdot |
+| 6 | CL | h, hdot |
+| 7 | CLdot | h, hdot, CL |
 
-For cases 3, 4 and 5, `state_feature_library_case` acts on states and measured
+For cases 3, 4, 6 and 7, `state_feature_library_case` acts on states and measured
 controls. In parametric runs, `input_feature_library_case` still acts only on
 VR, L/D, or `[L/D, V_R]`; controls do not become parameters. The fitted model receives
 controls before constant parameters in its `u` arrays.
 
 All differentiation uses the loader's tau without dividing
-by VR again. Cases 2, 4 and 5 construct lift-rate states with the supplied
+by VR again. Cases 2, 4 and 7 construct lift-rate states with the supplied
 first differentiator. Their lift-acceleration targets use native second
 derivatives of filtered lift when supported (FD `d=2`, SG `deriv=2`), with
 repeated first differentiation as the fallback for other callables or
 unsupported settings. Case 4 loads the recorded acceleration channel as a control.
-Case 5 omits that channel entirely and needs only measured h, hdot and CL.
+Cases 6 and 7 omit recorded acceleration entirely. Case 6 learns CLdot from
+CL with h/hdot controls. Case 7 learns CLddot from CLdot with h/hdot/CL
+controls. Use a generic polynomial or explicitly compatible selected library;
+Case 4 libraries with acceleration-specific indices are incompatible.
 
-For Case 5, `case5_single_lift3_motion1.json` combines cubic lift terms with
-linear motion terms. `case5_single_lift3_motion1_tensored.json` also includes
-lift-motion products. Both live under `configs/feature_library/` and use
-single-cylinder column groups `[0, 1]` (CL, CLdot) and `[2, 3]` (h, hdot).
-Use `--dynamics_case 5`; Case 4 configs with acceleration-specific indices
-must be replaced or adjusted for this shorter response layout.
+Case 5 has been removed. Supported case IDs are 1, 2, 3, 4, 6, and 7.
+ConstrainedSR3 is unavailable for Cases 6/7: their learned lift equation has no
+known kinematic identity to constrain. The complete IVP assessment adds exact
+h'=hdot and, in Case 7, CL'=CLdot after identification.
 
 ```python
 from sindy_viv.case_bryan.compute_sindy import compute_sindy
@@ -80,7 +82,7 @@ model = compute_sindy(
     cylinder_type="single",
     parameterization="vr",
     dynamics_case=2,
-    differentiator_case="configs/differentiator/savitzky_golay_single.json",
+    differentiator_case="configs/differentiator/savitzky_golay_single_base.json",
     state_feature_library_case="configs/feature_library/polynomial_3.json",
     input_feature_library_case="configs/feature_library/inverse_polynomial_2.json",
     optimizer_case="configs/optimizer/stlsq_basic.json",
@@ -139,7 +141,7 @@ with an ordinary polynomial state library. The joint model receives parameters
 in `[L/D, V_R]` order, and generates reciprocal products on these parameters
 before tensoring them with state features. The CSV feature names, pickle
 exports, derivative evaluation, and integral evaluation support these products
-in all four dynamics cases, subject to the reciprocal library's nonzero-input requirement.
+in all six supported dynamics cases, subject to the reciprocal library's nonzero-input requirement.
 
 Individual models have no parameter library: using the inverse configuration
 there generates features such as `1/h_0`, not `1/V_R`. Reciprocal state features
@@ -161,22 +163,22 @@ InversePolynomialLibrary(degree=2, include_bias=False)
 ```
 
 Keep only the polynomial bias to avoid duplicate feature names. This combined
-parameter library supports both `V_R^2` and reciprocal L/DÃ¢â‚¬â€œVR interactions.
+parameter library supports both `V_R^2` and reciprocal L/D-VR interactions.
 
 ## ConstrainedSR3
 
 The shared computation supports
-`optimizer_case="configs/optimizer/constrained_sr3_basic.json"`. Constraints are
+`optimizer_case="configs/optimizer/temp/constrained_sr3_basic.json"`. Constraints are
 generated after input preparation, from the pointwise library's actual feature
 names. There is no need to write coefficient indices or LHS/RHS arrays in JSON.
 
-Cases 1Ã¢â‚¬â€œ3 constrain the structural equations, with lift treated as a measured
+Cases 1-3 constrain the structural equations, with lift treated as a measured
 control in case 3. Case 4 constrains only `CL' = CLdot`.
 The remaining equations are fitted freely. Parametric structural constraints
 require a parameter bias and the positive-power `V_R^2` feature; the state
 library must retain the necessary linear state/control terms.
 
-For each cylinder, the preparation enforces the relations used in `script/old/`:
+For each cylinder, the preparation enforces these structural relations:
 
 ```text
 dh_i/dt    = hdot_i
@@ -200,10 +202,10 @@ model = compute_sindy(
     cylinder_type="single",
     parameterization="vr",
     dynamics_case=2,
-    differentiator_case="configs/differentiator/savitzky_golay_single.json",
+    differentiator_case="configs/differentiator/savitzky_golay_single_base.json",
     state_feature_library_case="configs/feature_library/polynomial_3.json",
     input_feature_library_case="configs/feature_library/polynomial_2.json",
-    optimizer_case="configs/optimizer/constrained_sr3_basic.json",
+    optimizer_case="configs/optimizer/temp/constrained_sr3_basic.json",
     vr_list=[3, 4, 5],
 )
 ```
@@ -260,8 +262,8 @@ pointwise basis determines bias terms and column order.
 
 `tweak0`/`tweakf` select inclusive recorded t* bounds, with open endpoints by
 default. Alternatively supply `fit_window_case` for trajectory-specific bounds;
-do not combine it with `tweak0`/`tweakf`. Cases 1/3 require no training
-differentiator. Cases 2/4/5 require one to construct lift-rate states on full
+do not combine it with `tweak0`/`tweakf`. Cases 1/3/6 require no training
+differentiator. Cases 2/4/7 require one to construct lift-rate states on full
 trajectories before cropping, but weak regression never differentiates its targets.
 
 ```python
@@ -335,11 +337,12 @@ VR in its structural lift coefficient, with parameter bias features `1 h` and
 New CLI entry point:
 
 ```powershell
-python script/perform_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json
+python script/perform_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json
 ```
 
-Cases 1 through 5 support this mode, including measured controls,
-reciprocal/tensored parameter libraries, and physical constraints.
+Cases 1, 2, 3, 4, 6, and 7 support this mode, including measured controls
+and reciprocal/tensored parameter libraries. Physical coefficient constraints
+are supported for Cases 1-4 only.
 WeakSINDy also supports `parameterization="lpd"` through the Python API.
 
 ## Fitting time bounds
@@ -354,14 +357,15 @@ independent of dynamics case, parameterization, and CLI list order.
 --fit_window_case configs/fit_window/two_tandem/overall.json
 ```
 
-`overall.json` uses available endpoints. Fill the first-half or sinusoidal
-preset's selected trajectory limits before using it; unused placeholders can
-remain. The complete schema and examples are in
+`overall.json` uses available endpoints. Current sinusoidal presets are
+populated. The single-cylinder first-half preset still has placeholders; fill
+every selected trajectory's limits before using it. Unused placeholders may remain. The complete schema and examples are in
 [`configs/fit_window/README.md`](../../../../configs/fit_window/README.md).
 The full nested config and its source/name are copied into `training.json`,
 alongside each trajectory's resolved bounds and actual sample coverage.
-Omitting `fit_window_case` loads the cylinder-specific `overall.json` from
-this repository. Training has no `tstar0` or `tstarf` arguments or CLI flags;
+Omitting `fit_window_case` loads the cylinder-specific `overall.json` bundled
+in `sindy_viv/presets/fit_window/`. Training has no `tstar0` or `tstarf`
+arguments or CLI flags;
 those options are reserved for evaluation. Set trajectory endpoints in the
 JSON file. Selected bounds must be finite or null, increase when both are
 specified, lie within available data, and retain at least two samples.
@@ -439,7 +443,7 @@ Choose dtype=np.float32 explicitly for float32 states, controls, derivatives
 and parameter columns. Time always remains float64. Differentiator computation
 precision follows its own configuration; preparation controls returned storage.
 Named internal PreparedTrajectory records preserve the existing public tuple
-wrappers. The physical Cases 1-4 remain unchanged; Case 5 retains only the lift-rate identity in ConstrainedSR3.
+wrappers. The physical Cases 1-4 remain unchanged; Cases 6/7 use unconstrained lift identification and exact kinematic identities in complete-model evaluation.
 
 Library metadata setup samples one row only for exact known shape-only
 polynomial, Fourier, custom and selected-polynomial implementations (including

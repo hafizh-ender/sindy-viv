@@ -99,7 +99,7 @@ def main() -> None:
     parser.add_argument(
         '--manifest',
         type=Path,
-        default=Path('state/tandem_coefficient_split.json'),
+        default=Path('results/tandem_coefficient_split.json'),
         help='Migration manifest, including original JSON payloads and replacement paths.',
     )
     args = parser.parse_args()

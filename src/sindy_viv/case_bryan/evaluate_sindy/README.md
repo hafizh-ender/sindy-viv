@@ -8,10 +8,12 @@
 | `model_evaluation.py` | `load_coefficients`, `predict_derivative`, `pointwise_predictor` | Rebuild named coefficient evaluation without refitting. |
 | `model_evaluation.py` | `simulate`, `solve_state_ivp`, `reference_limit_options`, `report_evaluation` | Integrate with finite-state/recovery handling and report complete or accepted-prefix trajectories. |
 | `derivative_assessment.py` | `reconstruct_from_derivatives`, `assess_derivatives` | Reintegrate numerical derivatives independently of a fitted SINDy model. |
-| `coupled_integration.py` | `coupled_reference`, `simulate_coupled_lift` | Close Case 4/5 motion using structural equations with the fitted lift dynamics. |
+| `coupled_integration.py` | `coupled_reference`, `simulate_coupled_lift` | Close Cases 4/6/7 motion using structural equations with the fitted lift dynamics. |
 | `frequency_functions.py` | `compare_frequency_analysis`, `evaluate_frequency_derivative`, `evaluate_frequency_integral` | Transform model/reference predictions into frequency, amplitude and phase assessments. |
 | `error_plots.py` | `plot_saved_errors` | Discover saved error reports and render aggregate curves/heatmaps without another fit or IVP solve. |
 | `single_suite.py` | `evaluate_suite`, `evaluate_single_suite`, `evaluate_two_tandem_suite` | Orchestrate the requested windows/diagnostics and reuse each computed prediction. |
+| `case3_hybrid.py` | `evaluate_case3_hybrid` | Replace Case 1/2 motion equations with saved Case 3 coefficients and run the ordinary full-state suite. |
+| `complete_lift_model.py` | `MotionModels`, `substitute_parameters`, `compile_complete_model` | Combine Case 6/7 lift and Case 3/theoretical motion at the selected VR/L/D with exact kinematic identities. |
 | `suite_cli.py` | `suite_parser` | Share single/tandem suite options across thin script entry points. |
 
 Window/model identity is supplied by [model_storage](../model_storage/README.md).
@@ -25,7 +27,7 @@ describe which selectors choose training artifacts versus evaluation data.
 
 `functions.py` exposes `evaluate_sindy`. Explicit `if`/`elif` branches select
 `evaluation_type="derivative"` or `"integral"`, `cylinder_type="single"` or
-`"two_tandem"`, and `parameterization="individual"`, `"vr"`, or `"vr_lpd"`.
+`"two_tandem"`, and `parameterization="individual"`, `"vr"`, `"lpd"`, or `"vr_lpd"`.
 
 | `cylinder_type` | `parameterization` | Saved model | Evaluation return keys |
 | --- | --- | --- | --- |
@@ -36,8 +38,8 @@ describe which selectors choose training artifacts versus evaluation data.
 | `two_tandem` | `lpd` | One model across L/D at each VR | `(lpd, vr)` |
 | `two_tandem` | `vr_lpd` | One model across L/D and VR | `(lpd, vr)` |
 
-The shared function supports physical cases 1 through 5 and standard or weakly fitted
-models. Validation,
+The shared function supports physical Cases **1, 2, 3, 4, 6, and 7** and
+standard or weakly fitted models. Case 5 was removed. Validation,
 coefficient alignment, numerical prediction, integration, and reporting helpers
 are in `model_evaluation.py`.
 
@@ -57,10 +59,10 @@ evaluations = evaluate_sindy(
     cylinder_type="single",
     parameterization="vr",
     dynamics_case=2,
-    differentiator_case="configs/differentiator/savitzky_golay_single.json",
+    differentiator_case="configs/differentiator/savitzky_golay_single_base.json",
     state_feature_library_case="configs/feature_library/polynomial_3.json",
     input_feature_library_case="configs/feature_library/polynomial_2.json",
-    optimizer_case="configs/optimizer/constrained_sr3_basic.json",
+    optimizer_case="configs/optimizer/temp/constrained_sr3_basic.json",
     vr_list=[5],
     tstar0=100,
     tstarf=150,
@@ -88,10 +90,10 @@ evaluations = evaluate_sindy(
     cylinder_type="two_tandem",
     parameterization="vr_lpd",
     dynamics_case=2,
-    differentiator_case="configs/differentiator/savitzky_golay_two_tandem.json",
+    differentiator_case="configs/differentiator/savitzky_golay_two_tandem_base.json",
     state_feature_library_case="configs/feature_library/polynomial_3.json",
     input_feature_library_case="configs/feature_library/polynomial_2.json",
-    optimizer_case="configs/optimizer/constrained_sr3_basic.json",
+    optimizer_case="configs/optimizer/temp/constrained_sr3_basic.json",
     vr_list=[8],
     lpd_list=[3.0],
     tstar0=100,
@@ -125,7 +127,7 @@ This avoids rebuilding the feature-library transform for every single sample;
 feature order, coefficients, and measured-control interpolation are preserved.
 Custom/composite libraries retain their configured transforms.
 Failed or early-terminated time-domain integrations retain the finite samples
-completed on the requested sample grid. Both ordinary and coupled Case 4/5
+completed on the requested sample grid. Both ordinary and coupled Cases 4/6/7
 evaluations save the partial trajectory in NPZ, diagnostics/metrics in JSON,
 and (unless `--no_plot` is set) two comparison figures:
 
@@ -160,8 +162,8 @@ limit[j] = N * max(abs(reference[:, j]))
 The reference is cropped to the selected evaluation window (`tstar0`..`tstarf`)
 before limits are computed. Limits are constant over that IVP and independent
 for every state and cylinder; measured controls and constant parameters are not
-limited. Coupled Case 4/5 integration uses the full reference state
-`[h, hdot, CL, CLdot]` per cylinder, so all evolved components have limits.
+limited. Coupled integration uses `[h, hdot, CL]` per cylinder for Case 6 and
+`[h, hdot, CL, CLdot]` for Cases 4/7, so all evolved components have limits.
 For an identically zero reference channel, its limit is `max(atol[j], machine
 epsilon)` (or scalar `atol`) to avoid a terminal event at the initial zero state.
 
@@ -174,7 +176,7 @@ solver diagnostics. The partial trajectory, JSON, and two plots are saved as
 above, and the evaluator continues with the next trajectory.
 
 ```bat
-python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 8 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/overall_reduced.json --tstar0 450 --tstarf 500 --max_state_factor 5
+python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 8 --differentiator_case configs/differentiator/savitzky_golay_single_base.json --state_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --fit_window_case configs/fit_window/single/overall_reduced.json --tstar0 450 --tstarf 500 --max_state_factor 5
 ```
 
 All six integral evaluation CLIs accept this option, as does the frequency CLI
@@ -203,7 +205,8 @@ driver. It validates solver options once and uses one result-validation and
 diagnostics path for both strict and partial evaluation. The recovery wrapper
 only records accepted samples and returns a solver result on numerical errors;
 it does not choose stopping criteria. Coupled motion/lift equations are evaluated
-directly from `[h, hdot, CL, CLdot]` arrays in the canonical library order.
+from the complete state arrays in the canonical library order (three states
+per cylinder for Case 6; four for Cases 4/7).
 
 Diagnostics include method, tolerances, status, message, and evaluation counts.
 Low-level helpers keep strict full-coverage checking by default; partial
@@ -261,10 +264,10 @@ values, names, or CSV alignment.
 
 Set `weak=True` to read `weak_individual`, `weak_parametric_vr`,
 `weak_parametric_lpd`, or `weak_parametric_vr_lpd` results. Evaluation uses the returned pointwise
-equations, rather than weak integration windows. For weak cases 1/3, pass
+equations, rather than weak integration windows. For weak Cases 1/3/6, pass
 `differentiator_case=None`. Derivative evaluation then requires
 `evaluation_differentiator_case` to construct its reference. Integral evaluation
-of weak cases 1/3 needs neither differentiator.
+of weak Cases 1/3/6 needs neither differentiator.
 
 Pass `weak_feature_library_case` / `--weak_feature_library_case` with the same
 weak-library config used for training. Its filename stem selects the subfolder
@@ -276,12 +279,13 @@ remain accessible through `model_dir` / `--model_dir`.
 `differentiator_case` identifies the training configuration and model path.
 `evaluation_differentiator_case` optionally selects a different reference
 differentiator without changing the model path; otherwise the training
-differentiator is reused. Cases 2 and 4 need a reference differentiator for both
+differentiator is reused. Cases 2, 4 and 7 need a reference differentiator for both
 evaluation methods.
 
-All four dynamics cases are supported in all six workflows. Cases 3 and 4
-evaluate forced systems: lift (case 3) or motion (cases 4/5) comes from measured
-control channels, while the model states evolve independently from their
+All six supported dynamics cases are available in the six standard evaluation
+workflows. Cases 3/4/6/7 normally evaluate forced systems: lift (Case 3),
+motion (Cases 4/6), or motion and lift (Case 7) come from measured controls,
+while the model states evolve independently from their
 initial values. Integral evaluation interpolates those controls linearly in
 tau at solver stages. Derivative evaluation uses controls at the selected
 sample times. Both outputs compare only the modeled states or their derivatives.
@@ -308,8 +312,10 @@ All six integral CLI scripts save both outputs by default for each selected
 trajectory: `integral_error_metrics_*.json` and `integral_comparison_*.png`.
 The figure compares every state channel, including both cylinders and the
 lift-rate states, and displays each channel's metrics. Passing
-`--no_plot` writes metrics only. Reports require a successful integration over
-the requested region; failed or prematurely stopped solves raise an error.
+`--no_plot` skips figures while retaining metrics and trajectory artifacts.
+Incomplete numerical integrations save their accepted prefix and diagnostics;
+their errors are excluded from full-window summaries. Invalid configurations
+and unrelated programming errors still raise.
 
 The twelve `script/evaluate_{derivative,integral}_sindy_<configuration>.py` files
 parse arguments and call `evaluate_sindy` with their fixed selectors. Existing
@@ -360,7 +366,7 @@ After filling the sinusoidal config and fitting with it, evaluate an L/D-only mo
 the existing L/D=3.5 dataset, while scoring t*=200..300:
 
 ```powershell
-python script/evaluate_integral_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 3.5 --training_vr_list 8 --training_lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json --tstar0 200 --tstarf 300
+python script/evaluate_integral_sindy_two_tandem_parametric_lpd.py --dynamics_case 3 --differentiator_case configs/differentiator/savitzky_golay_two_tandem_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --input_feature_library_case configs/feature_library/polynomial_2.json --optimizer_case configs/optimizer/stlsq_basic.json --vr_list 8 --lpd_list 3.5 --training_vr_list 8 --training_lpd_list 1.5 2 3 --fit_window_case configs/fit_window/two_tandem/sinusoidal.json --tstar0 200 --tstarf 300
 ```
 
 Evaluation `tstar0` and `tstarf` remain scalar scoring bounds and may differ from
@@ -437,11 +443,11 @@ states and targets together, then performs two independent assessments:
    timestamps, with no automatic shift to compensate for source-data staggering.
 
 The IVP uses prescribed derivative histories, independently of any learned
-SINDy equations. Cases 4/5 assess their lift states and have no motion-state
+SINDy equations. Cases 4/6/7 assess their lift states and have no motion-state
 recorded-derivative comparison. No additional smoothing stage is applied.
 
 ```powershell
-python script/assess_derivative.py --dynamics_case 1 --cylinder_type single --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single.json
+python script/assess_derivative.py --dynamics_case 1 --cylinder_type single --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single_base.json
 ```
 
 Reports and optional plots are saved under
@@ -486,7 +492,7 @@ reports = evaluate_frequency_derivative(
     weak=True,
     weak_feature_library_case="configs/weak_feature_library/default.json",
     vr_list=[3],
-    evaluation_differentiator_case="configs/differentiator/savitzky_golay_single.json",
+    evaluation_differentiator_case="configs/differentiator/savitzky_golay_single_base.json",
 )
 ```
 
@@ -515,7 +521,7 @@ frequencies are never subtracted. `amplitude_floor` can mark weak amplitudes
 unresolved; a numerical roundoff floor is always applied.
 
 ```powershell
-python script/evaluate_frequency_sindy.py --evaluation_type derivative --dynamics_case 1 --vr_list 3 --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --weak --evaluation_differentiator_case configs/differentiator/savitzky_golay_single.json
+python script/evaluate_frequency_sindy.py --evaluation_type derivative --dynamics_case 1 --vr_list 3 --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --weak --evaluation_differentiator_case configs/differentiator/savitzky_golay_single_base.json
 ```
 
 Change `--evaluation_type` to `integral` for state-trajectory frequency assessment.
@@ -531,7 +537,7 @@ Individual FFT figures use the shared compact layout: a 4.5-inch canvas width
 and 25% smaller width/height, with square panels and the existing text sizes.
 Aggregate frequency/amplitude/phase trends keep their existing figure sizes.
 
-## Closed motion/lift integration for Cases 4 and 5
+## Closed motion/lift integration for Case 4
 
 Pass `coupled_motion=True` to integral `evaluate_sindy` or
 `evaluate_frequency_integral`, or add `--coupled_motion` to their integral CLIs.
@@ -545,7 +551,7 @@ hdot' = -4*pi^2*h + 2*VR^2/(pi*structural_mstar)*CL
 
 At every solver stage the **evolving** motion variables are passed into the
 fitted lift library. For Case 4, hddot is recomputed from the equation above;
-for Case 5, only evolving h/hdot are supplied. Measured motion after the initial
+Cases 6/7 use the separate complete-model assessment below. Measured motion after the initial
 state does not drive this simulation. Both fitted lift equations are retained;
 if exact CL'=CLdot was enforced during training, that relation remains enforced.
 Constant VR/L/D parameter columns are supplied in their original library order.
@@ -561,52 +567,16 @@ state, per-state NRMSE, and the physical mass ratio in solver metadata. The same
 mode can be assessed in the frequency domain with `--coupled_motion`.
 
 ```powershell
-python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --coupled_motion
+python script/evaluate_integral_sindy_single_individual.py --dynamics_case 4 --vr_list 3 --differentiator_case configs/differentiator/savitzky_golay_single_base.json --state_feature_library_case configs/feature_library/polynomial_3.json --optimizer_case configs/optimizer/stlsq_basic.json --coupled_motion
 ```
 
 The feature/optimizer/differentiator configs in an evaluation command must match
 an existing saved fit; these commands evaluate models rather than training them.
-# Two-tandem experiment batch
+## Single-cylinder evaluation suite
 
-Run `run_two_tandem.bat` from the repository root to execute its Parts A-D
-checklist. All 70 experiments are enabled: 10 individual Case 3 configurations
-in A, 10 VR-parametric Case 3 configurations in B, and 25 individual
-configurations each for Cases 1 and 2 in C and D. Every command selects all
-VRs 5-14 and L/D values 1.5, 2, 3, 3.5 and 4. Part B fits separately at each
-L/D using a degree-2 VR library.
-
-Each fit is followed by `evaluate_sindy_two_tandem_suite.py`. Derivatives are
-assessed over `overall_reduced`, `sinusoidal` and `sinusoidal_evaluation`;
-IVPs use `sinusoidal_evaluation` (currently t* 1350-1400 throughout the grid).
-Derivative frequency/amplitude comparisons use the latter two windows, and
-IVP spectral comparisons use the focused evaluation window. Part A adds both
-cylinders' hddot coefficient heatmaps at each L/D; Parts C/D add each cylinder's
-CL-minus-h IVP phase comparisons. These evaluations retain both cylinders and
-aggregate across VR/L/D using the existing suite output folders.
-
-The batch uses the project virtual environment. A failed fit skips its suite;
-subsequent experiments continue after fit or evaluation failures. The final
-exit code is nonzero if any command failed. Matching fits, evaluation tables
-and 300-DPI figures overwrite their existing files. Running the batch performs
-training as well as evaluation; it is not a summary-only plotting command.
-
-# Single-cylinder experiment batch
-
-From the repository root, run `run_single.bat` to fit and evaluate the 122
-configurations in its commented Parts A–F checklist. The batch uses the project
-virtual environment and continues after errors. A failed fit skips that fit's
-evaluation suite; the batch returns a nonzero exit code at the end if any fitting
-or evaluation command failed.
-
-To regenerate figures using existing fitted models, run `run_single_suite.bat`.
-It enables all 122 suite evaluations from Parts A–F, including the entries that
-are currently commented out in `run_single.bat`. It recomputes derivative
-predictions and IVPs using saved coefficients and overwrites matching evaluation
-reports and figures. Requirements are the project virtual environment, raw CSVs,
-and matching `model.csv`/`training.json` files; training settings and window JSONs
-must identify those saved fits. Previously generated raw-data diagnostics are
-not required. Failed suites are counted and subsequent evaluations continue;
-the batch returns a nonzero exit code at the end if any suite failed.
+The historical root batch launchers and `old_run/` were removed. Use the
+Python suite entry points directly; they evaluate saved coefficients and do not
+fit a model.
 
 `script/evaluate_sindy_single_suite.py` evaluates one already fitted experiment.
 Its `--fit_window_case` identifies training, while `--derivative_window_cases`
@@ -619,7 +589,7 @@ python script/evaluate_sindy_single_suite.py --dynamics_case 3 --vr_list 3 4 5 6
 ```
 
 The suite saves derivative time comparisons for all three windows and standard
-IVP comparisons for the evaluation window. Cases 4/5 additionally run the coupled
+IVP comparisons for the evaluation window. Cases 4/6/7 additionally run the coupled
 structural/lift IVP. Native SciPy events stop at `--max_state_factor` times each
 reference state's maximum absolute value (default 10); existing partial-trajectory
 reports and both time-series views are preserved.
@@ -629,8 +599,8 @@ IVPs and unavailable normalized errors. Frequency and amplitude curves compare
 model and reference across VR, using only complete IVPs. Frequencies and FFT
 amplitudes use a rectangular window; time-series amplitude is half the selected
 signal range. Per-VR FFT comparison plots display f*=0..2 without phase panels.
-`--phase_comparison` additionally plots CL-minus-h phase for Case 1/2 IVPs, using
-the same reference-displacement peak bin for both channels and both signals.
+`--phase_comparison` additionally plots CL-minus-h phase for Case 1/2 IVPs
+and the Case 6/7 complete IVPs, using the same reference-displacement peak bin for both channels and both signals.
 
 Summaries live inside the existing fitting chain under
 `evaluation/summary/reference=.../evaluation_window=.../VR=.../fit_window=.../time=.../`.
@@ -676,14 +646,14 @@ For folders without `training.json`, fit/training selectors are omitted from
 model lookup. The supplied fit-window name labels the report and does not imply
 that the manual model was fitted. Original coefficient CSVs are never rewritten.
 
-`run_theoretical_two_tandem.bat` evaluates the five manually entered theoretical
+`python script/evaluate_theoretical_two_tandem.py` evaluates the five manually entered theoretical
 VR models under `.../input_polynomial_2/theoretical/LpD=<value>/fit_window=overall_reduced/`.
 It covers VR 5-14 and L/D 1.5, 2, 3, 3.5 and 4 with the usual Case 3 suite:
 three derivative windows, sinusoidal-evaluation IVPs, FFT/amplitude assessments,
 effective coefficient maps per L/D and the aggregate map retaining VR terms.
 Use `--dry-run` to validate model names/windows without evaluating trajectories.
 Reports are saved under the theoretical model tree's `evaluation` directories;
-status/hash manifests go to `state/theoretical_evaluation_runs` by default.
+status/hash manifests go to `results/theoretical_evaluation_runs` by default.
 The `--after_study` option requires all predecessor stages to have finished.
 
 `script/evaluate_sindy_two_tandem_suite.py` provides the same diagnostics for both
@@ -707,7 +677,8 @@ curves. The common folder also contains VR-by-L/D error heatmaps for each variab
 These per-variable IVP heatmaps (standard and coupled integral evaluation) use
 28% larger figure width and height to give the cell values more room. Rerun the
 suite or `plot_error_heatmap_sindy_ivp.py` to regenerate them from evaluation results.
-`--phase_comparison` on Cases 1/2 produces separate h–CL phase comparisons for
+`--phase_comparison` on Cases 1/2 IVPs and Case 6/7 complete IVPs produces
+separate h/CL phase comparisons for
 cylinders 0 and 1, each using its own reference displacement peak frequency.
 For individual Case 3 models, `--weight_heatmap` saves `hddot0_coefficients_heatmap.png`
 and `hddot1_coefficients_heatmap.png` under `coefficients/LpD = .../`, with matching CSV
@@ -735,114 +706,52 @@ y limits [-1.05, 1.05]. Rerun the evaluation or plotting commands to refresh PNG
 NRMSE cell annotations use scientific notation for nonzero values below 0.01.
 Cells enlarge as needed to fit the annotations at the standard font size.
 
-## Filtered single-cylinder experiment runner
+## Complete autonomous models for Cases 6 and 7
 
-Run from the repository root:
+See the [Case 6/7 CLI guide](../../../../script/README.md#lift-only-identification-cases-6-and-7) for state/control layouts, full commands, motion-donor selection and output paths. Both suites automatically include the complete-model IVP. `case_3_model`/`--case_3_model` accepts one or more Case 3 metadata/model paths; omitting it selects theory. Both parameterized source models are substituted per trajectory before coefficient merging. `complete_lift_model.py` exports `complete_model.csv` and a provenance JSON. Kinematic hdot is exact in both cases; kinematic CLdot is exact in Case 7. Case 5 is no longer supported.
 
-```powershell
-.\run_new_single.bat --dry-run
-.\run_new_single.bat
-```
 
-The Parts A-F catalog contains 41 experiments. Currently 20 experiments
-(40 commands) are active: A01-A04, B01-B04, C01-C04, D01-D04 and E01-E04.
-All of F and E05-E08 are on hold, preserved as `REM ON HOLD` calls. Each
-active fit is immediately followed by its matching evaluation suite.
-The original notes are preserved in `old_run/run_new_single_checklist.txt`.
-All experiments use VR 3-8 and `finite_difference_basic.json` (order 2).
-Filtering uses `butterworth_single_flim2.json` for every experiment.
-The batch uses this checkout's `.venv` and source code, and keeps the existing
-filter/config/training-window result paths.
+## Suite assessment and metrics
 
-| Part | Catalog experiments | Models and variations |
-| --- | ---: | --- |
-| A | 4 | Individual Case 3, polynomial degree 1; Butterworth, OLS and vanilla STLSQ with both training windows; hddot coefficient heatmaps |
-| B | 4 | Case 3 parameterized by VR with degree 2; Butterworth, OLS and vanilla STLSQ with both training windows; effective hddot coefficient heatmaps |
-| C | 4 | Individual Case 1, state degrees 1-4; Butterworth, OLS, sinusoidal training; IVP h/CL phase comparisons |
-| F01-F06 | 6 | VR-parameterized Case 1, immediately after C; state degrees 2/3 crossed with VR degrees 2/3/4 |
-| D | 4 | The Part C settings for Case 2 |
-| F07-F12 | 6 | VR-parameterized Case 2, immediately after D; state degrees 2/3 crossed with VR degrees 2/3/4 |
-| E | 7 | Individual Case 4, OLS degrees 1-4 and three held restricted libraries; standard and coupled IVPs |
-| F13-F18 | 6 | VR-parameterized Case 4, immediately after E; state degrees 2/3 crossed with VR degrees 2/3/4 |
+The shared suite supports Cases 1, 2, 3, 4, 6, and 7 for both datasets:
 
-Parts A/B use both OLS (`ols`: alpha=0, threshold=0) and vanilla STLSQ
-(`stlsq_vanilla_basic`: alpha=0, threshold=0.1). Parts C-E use OLS only.
-Column normalization is off. All active fits use Butterworth filtering.
-Held calls retain their previous optimizer settings; the tandem runner
-uses OLS/vanilla STLSQ for A/B and OLS degrees 2-4 for C-E.
-A01-A02 and B01-B02 use OLS; A03-A04 and B03-B04 use vanilla STLSQ.
-Each pair uses `overall_reduced` then `sinusoidal` training. A/B use state
-polynomial degree 1, and B uses VR polynomial degree 2. C/D retain C01-C04 and D01-D04 only. E retains E01-E06 and E08.
-All C/D/E/F experiments use Butterworth filtering and sinusoidal training.
-Existing IDs remain, with A03-A04 and B03-B04 added for vanilla STLSQ. Execution order is A, B, C, F01-F06,
-D, F07-F12, E, F13-F18. The 18 parameterized experiments retain their
-original settings and follow their corresponding individual dynamics cases.
+| Case | Standard IVP states per cylinder | Prescribed measured controls | Additional coupled IVP |
+| --- | --- | --- | --- |
+| 1 | h, hdot, CL | None | Not needed: already a complete system |
+| 2 | h, hdot, CL, CLdot | None | Not needed: already a complete system |
+| 3 | h, hdot | CL | None |
+| 4 | CL, CLdot | h, hdot, hddot | h, hdot, CL, CLdot with theoretical motion |
+| 6 | CL | h, hdot | h, hdot, CL with Case 3 or theoretical motion |
+| 7 | CLdot | h, hdot, CL | h, hdot, CL, CLdot with Case 3 or theoretical motion |
 
-E05/E06 use the existing `case4_single_selected_polynomial_3_symmetric_only`
-and `case4_single_selected_polynomial_3_no_hCL` libraries. E08 uses
-`wake_case4_vdp_acceleration_single` (linear hddot coupling),
-with linear restoring and van der Pol damping.
+For every derivative window, the suite predicts Xdot at the measured
+states/controls and compares it with numerical reference derivatives. Standard
+IVPs start from the first measured state and evolve only their modeled states;
+measured controls, when present, are interpolated in tau. Complete Case 6/7
+IVPs evolve motion and lift together without prescribed measurement histories.
+Tandem trajectories integrate both cylinders together.
 
-Every suite evaluates derivatives on `overall_reduced`, `sinusoidal`, and
-`sinusoidal_evaluation`. Standard IVPs use `sinusoidal_evaluation`; Case 4
-also runs the structural/lift coupled IVP. Frequency and amplitude comparisons
-use rectangular FFT windows, with per-VR FFT displays limited to f*=0..2.
-Derivative spectral comparisons use only `sinusoidal` and
-`sinusoidal_evaluation`. Amplitude trends include half peak-to-peak and
-dominant FFT amplitudes. Partial IVPs are N/A in the title-free NRMSE heatmaps
-and omitted from spectral trends. Parts A/B additionally save the signed hddot
-coefficient heatmaps; Parts C/D additionally save IVP CL-minus-h phases.
+Every reported NRMSE is RMSE divided by the reference standard deviation,
+computed separately for each variable and cylinder. No mean of h and CL is
+used in suite error tables. Constant-reference errors are undefined. Full-window
+summary errors and spectral reports are N/A for incomplete IVPs; their prefix
+metrics remain diagnostic. Numerical completion within the state guard is not
+an accuracy criterion or proof of long-term stability.
 
-Only the active calls execute. Preflight checks verify required scripts/configs.
-Failed fits skip their matching evaluations; failed evaluations do not stop
-later fits. The final summary lists failed experiment stages and skipped
-evaluations, with a nonzero exit code if any command failed. Matching outputs
-are overwritten. Edit `SINDY_VRS`, `SINDY_IVP_METHOD`, or
-`SINDY_MAX_STATE_FACTOR` near the top to change those settings.
+`--spectral_window_cases` must be a subset of `--derivative_window_cases`.
+Each selected derivative window and every completed standard/coupled IVP gets
+frequency/amplitude comparisons. The suite reuses the computed predictions,
+uses a rectangular FFT window, and reports dominant frequency, dominant-bin
+amplitude and half the time-series range. Phase comparison is optional for
+Cases 1/2 and complete Cases 6/7. `--weight_heatmap` is available only for Case 3.
 
-## Filtered two-tandem-cylinder experiment runner
+The previous lift-only study's final suites used derivative windows `overall_reduced`,
+`sinusoidal` and `sinusoidal_evaluation`, IVPs on `sinusoidal_evaluation`,
+and derivative spectra on the two sinusoidal windows. These are caller-selected
+windows, not hard-coded defaults of the suite API.
 
-```powershell
-.\run_new_two_tandem.bat --dry-run
-.\run_new_two_tandem.bat
-```
-
-The tandem runner contains 17 active configurations and 34 fit/evaluation
-commands: OLS and vanilla STLSQ for A/B, and OLS degrees 2-4 for C-E. Part F and E05-E08 remain on hold. It includes both
-cylinders for every combination of VR 5-14 and L/D 1.5, 2, 3, 3.5 and 4.
-Parts A/B have four experiments each, C/D have three active experiments each,
-and E has three active experiments plus three held restricted libraries. F has
-eighteen held experiments, split into groups following C, D and E. Vanilla
-STLSQ uses alpha=0 and threshold=0.1.
-
-All experiments use `finite_difference_basic.json`, with
-`butterworth_two_tandem_flim2.json` for filtering.
-Fitting and evaluation windows come from `configs/fit_window/two_tandem/`.
-Individual fits produce one model per L/D/VR pair; Parts B/F fit a
-VR-parameterized model separately at each L/D, retaining the selected
-training VR list when resolving saved models.
-
-Every fit is followed by `evaluate_sindy_two_tandem_suite.py`. Derivative
-evaluation covers `overall_reduced`, `sinusoidal` and
-`sinusoidal_evaluation`; IVPs use `sinusoidal_evaluation`. Spectral
-comparisons cover the two sinusoidal windows. Parts A/B retain the Case 3
-coefficient heatmaps: separate acceleration targets for individual models,
-and separate acceleration-target effective-coefficient maps per L/D for parameterized models.
-Parts C/D include CL-minus-h phase comparisons for both cylinders. Case 4
-suites also evaluate the coupled structural/lift IVP.
-
-Part E uses tandem response libraries with the canonical ten-channel Case 4
-ordering. E05 uses
-`case4_two_tandem_selected_polynomial_3_symmetric_only.json`, retaining
-linear and cubic terms plus the bias. E06 uses
-`case4_two_tandem_selected_polynomial_3_no_hCL.json`, retaining separate
-wake-only and motion-only polynomials through degree three and excluding
-mixed wake/motion products. These allow products within each group across
-cylinders. E08 uses `wake_case4_vdp_acceleration_two_tandem.json`, retaining
-linear restoring and van der Pol damping for both cylinders, with no
-additional inter-cylinder product features.
-
-The runner uses this checkout's `.venv`, validates scripts/configs before
-fitting, and continues after failures. A failed fit skips its suite; the
-final summary lists failed stages and skipped evaluations. Matching outputs
-use the existing tandem filtering/model/window folder conventions.
+To evaluate Case 1/2 with replacement Case 3 motion equations, use
+[`script/evaluate_case3_hybrid.py`](../../../../script/evaluate_case3_hybrid.py);
+see the [hybrid CLI guide](../../../../script/README.md#case-12-with-case-3-motion-equations).
+This hybrid replaces both fitted motion equations. Case 6/7 complete-model
+evaluation instead fixes the hdot identity to coefficient 1.
